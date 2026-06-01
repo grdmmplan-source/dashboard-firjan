@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dashboard Firjan</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:#030712;color:#fff}
+#topbar{background:#0d1117;border-bottom:2px solid #f97316;padding:10px 20px;display:flex;align-items:center;justify-content:space-between}
+.logo-row{display:flex;align-items:center;gap:10px}
+.logo-icon{width:36px;height:36px;background:#f97316;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0}
+.logo-name{font-weight:700;font-size:16px}
+.logo-sub{color:#6b7280;font-size:10px}
+.btn-row{display:flex;gap:8px;align-items:center}
+.btn{border:none;cursor:pointer;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;transition:.15s}
+.btn-nav{background:#1f2937;color:#9ca3af;border:1px solid #374151}
+.btn-nav.active,.btn-nav:hover{background:#f97316;color:#fff;border-color:#f97316}
+.btn-wall{background:#1d4ed8;color:#fff}.btn-wall:hover{background:#1e40af}.btn-wall.active{background:#16a34a}
+.btn-panel{background:#7c3aed;color:#fff}.btn-panel:hover{background:#6d28d9}
+.sep{width:1px;height:28px;background:#374151;margin:0 4px}
+
+/* Campaign badge */
+#camp-wrap{display:flex;align-items:center;gap:8px}
+select.camp{background:#1f2937;border:1px solid #374151;color:#fff;border-radius:7px;padding:7px 12px;font-size:12px;cursor:pointer;font-weight:600}
+select.camp:focus{outline:none;border-color:#f97316}
+#camp-badge{font-size:10px;padding:3px 8px;border-radius:99px;font-weight:700;display:none}
+#camp-badge.todas{display:none}
+#camp-badge.retomada{display:inline;background:#1d4ed8;color:#fff}
+#camp-badge.smart{display:inline;background:#16a34a;color:#fff}
+
+/* Notice for non-ativo modules */
+#camp-notice{display:none;background:#1f2937;border:1px solid #374151;border-left:3px solid #f97316;padding:8px 14px;font-size:12px;color:#9ca3af;margin:16px 24px 0;border-radius:6px}
+
+#single-view{display:block}
+.page{display:none;padding:24px}
+.page.active{display:block}
+#wall-view{display:none;width:100vw;height:calc(100vh - 57px)}
+#wall-view.show{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.wall-cell{overflow:hidden;border:2px solid #1f2937;padding:14px;display:flex;flex-direction:column;background:#0d1117}
+.wall-cell-title{font-size:12px;font-weight:700;color:#f97316;border-bottom:1px solid #1f2937;padding-bottom:7px;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.wall-cell-body{flex:1;overflow:hidden;display:flex;flex-direction:column;gap:8px}
+.kpi-grid{display:grid;gap:8px}
+.g4{grid-template-columns:repeat(4,1fr)}.g2{grid-template-columns:repeat(2,1fr)}
+.kpi{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:12px}
+.kpi-label{color:#9ca3af;font-size:10px;margin-bottom:4px}
+.kpi-val{font-size:20px;font-weight:700}
+.kpi-val.lg{font-size:28px}
+.kpi-sub{color:#6b7280;font-size:10px;margin-top:2px}
+.kpi-trend{font-size:10px;margin-top:4px;font-weight:600}
+.up{color:#4ade80}.down{color:#f87171}
+.chart-row{display:grid;gap:8px;flex:1;min-height:0}
+.cr2{grid-template-columns:1fr 1fr}
+.chart-card{background:#1f2937;border:1px solid #374151;border-radius:8px;padding:12px;min-height:0;display:flex;flex-direction:column}
+.chart-card canvas{flex:1;min-height:0}
+.ct{color:#fff;font-size:11px;font-weight:600;margin-bottom:8px}
+.q-row{margin-bottom:8px}
+.q-head{display:flex;justify-content:space-between;margin-bottom:4px;font-size:10px;color:#9ca3af}
+.q-head span:last-child{color:#4ade80;font-weight:600}
+.bar-bg{width:100%;background:#374151;border-radius:999px;height:6px}
+.bar-fill{height:6px;border-radius:999px;background:#22c55e}
+.list-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #374151;font-size:11px}
+.list-row:last-child{border-bottom:none}
+.list-label{color:#9ca3af}
+.sec-title{margin-bottom:16px}
+.sec-title h2{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px}
+.sec-title h2 span{color:#f97316}
+.sec-title p{color:#9ca3af;font-size:12px;margin-top:3px}
+
+/* WPP section hide */
+.wpp-section{transition:opacity .3s}
+.wpp-section.hidden{display:none}
+
+#kiosk{display:none;position:fixed;inset:0;background:#000;z-index:9999;flex-direction:column}
+#kiosk.show{display:flex}
+#k-bar-wrap{height:4px;background:#1f2937}
+#k-bar{height:100%;background:#f97316;transition:width .05s linear;width:0%}
+#k-content{flex:1;overflow:hidden;position:relative}
+.k-page{position:absolute;inset:0;overflow-y:auto;padding:40px;display:none}
+.k-page.show{display:block}
+#k-nav{display:flex;align-items:center;justify-content:center;gap:10px;padding:10px;background:#0d1117;border-top:1px solid #1f2937}
+.p-dot{width:10px;height:10px;border-radius:50%;background:#374151;cursor:pointer;transition:.2s}
+.p-dot.active{background:#f97316}
+#k-label{color:#9ca3af;font-size:11px;margin:0 12px}
+#k-close{position:absolute;top:12px;right:16px;background:rgba(255,255,255,.1);border:none;color:#fff;font-size:12px;padding:7px 14px;border-radius:7px;cursor:pointer;z-index:10}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="logo-row">
+    <div class="logo-icon">F</div>
+    <div><div class="logo-name">FIRJAN</div><div class="logo-sub">Dashboard Unificado</div></div>
+    <div class="sep"></div>
+    <div id="camp-wrap">
+      <select class="camp" id="camp-sel" onchange="onCampChange()">
+        <option value="todas">Todas as campanhas</option>
+        <option value="retomada">Retomada da Trilha</option>
+        <option value="smart">Smart Factory</option>
+      </select>
+      <span id="camp-badge"></span>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-nav active" onclick="showPage('ativo',this)">📞 Ativo</button>
+    <button class="btn btn-nav" onclick="showPage('receptivo',this)">📨 Receptivo</button>
+    <button class="btn btn-nav" onclick="showPage('saude',this)">❤️ Saúde</button>
+    <button class="btn btn-nav" onclick="showPage('sac',this)">🎧 SAC</button>
+    <div class="sep"></div>
+    <button class="btn btn-wall" id="btn-wall" onclick="toggleWall()">⊞ Videowall 2×2</button>
+    <button class="btn btn-panel" onclick="openKiosk()">▶ Modo Painel</button>
+    <div class="sep"></div>
+    <button class="btn" style="background:#1f2937;color:#fff;border:1px solid #374151">📥 Exportar</button>
+  </div>
+</div>
+
+<div id="camp-notice">ℹ️ O filtro de campanhas se aplica ao módulo <strong>Ativo</strong>. Os demais módulos exibem dados consolidados.</div>
+
+<div id="single-view">
+
+  <!-- ATIVO -->
+  <div class="page active" id="page-ativo">
+    <div class="sec-title"><h2><span>⚡</span>Visão Geral — Ativo <span id="sv-camp-label" style="font-size:14px;color:#9ca3af"></span></h2><p id="sv-camp-desc">Todas as campanhas — Retomada da Trilha + Smart Factory</p></div>
+    <div class="kpi-grid g4">
+      <div class="kpi"><div class="kpi-label">🏢 Empresas na Base</div><div class="kpi-val lg" id="kv-empresas">783</div></div>
+      <div class="kpi"><div class="kpi-label">📞 Total de Tentativas</div><div class="kpi-val lg" id="kv-tentativas">6.566</div><div class="kpi-sub" id="kv-media-sub">Média: 8,39 por empresa</div></div>
+      <div class="kpi"><div class="kpi-label">⭐ Interessados</div><div class="kpi-val lg" id="kv-interessados">148</div><div class="kpi-trend up" id="kv-int-trend">↑ 12,5%</div></div>
+      <div class="kpi"><div class="kpi-label">📈 Taxa de Conversão</div><div class="kpi-val lg" id="kv-conversao">97,37%</div></div>
+    </div>
+    <div class="kpi-grid g2" style="margin-top:10px">
+      <div class="kpi"><div class="kpi-label">👤 Contatos com Decisor</div><div class="kpi-val" id="kv-decisor">152</div><div class="kpi-sub" id="kv-decisor-sub">Retomada + Smart Factory</div></div>
+      <div class="kpi"><div class="kpi-label">🔁 Média Tentativas/Empresa</div><div class="kpi-val" id="kv-media">8,39</div></div>
+    </div>
+    <div class="chart-row cr2" style="margin-top:16px;height:280px">
+      <div class="chart-card" style="display:flex;flex-direction:column">
+        <div class="ct">Distribuição por Status</div>
+        <canvas id="sv-status" style="flex:1;min-height:0"></canvas>
+        <div id="status-legend" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #374151;color:#6b7280;font-size:9.5px;line-height:1.7"></div>
+      </div>
+      <div class="chart-card"><div class="ct">Evolução Diária</div><canvas id="sv-evolucao"></canvas></div>
+    </div>
+
+    <!-- WhatsApp — só aparece para "todas" e "smart" -->
+    <div id="wpp-section" class="wpp-section" style="margin-top:28px">
+      <div class="sec-title"><h2><span>⚡</span>WhatsApp — Smart Factory</h2><p>Ações massivas exclusivas da campanha Smart Factory</p></div>
+      <div class="kpi-grid g4">
+        <div class="kpi"><div class="kpi-label">📤 Total Enviados</div><div class="kpi-val lg" id="kv-wpp-env">516</div></div>
+        <div class="kpi"><div class="kpi-label">💬 Total Respostas</div><div class="kpi-val lg" id="kv-wpp-resp">66</div></div>
+        <div class="kpi"><div class="kpi-label">📊 Taxa de Resposta</div><div class="kpi-val lg" id="kv-wpp-taxa">12,79%</div></div>
+        <div class="kpi"><div class="kpi-label">🔇 Sem Resposta</div><div class="kpi-val lg" id="kv-wpp-sem">450</div></div>
+      </div>
+      <div class="chart-row cr2" style="margin-top:12px;height:220px">
+        <div class="chart-card"><div class="ct">Respostas WhatsApp</div><div style="display:flex;justify-content:center;height:90%"><canvas id="sv-wpp" style="max-width:200px"></canvas></div></div>
+        <div class="chart-card"><div class="ct">Resumo da Operação</div>
+          <div class="list-row"><span class="list-label">Mensagens Enviadas</span><span style="font-weight:600" id="lr-env">516</span></div>
+          <div class="list-row"><span class="list-label">Informados</span><span class="up" style="font-weight:600" id="lr-info">32</span></div>
+          <div class="list-row"><span class="list-label">Solicitar E-mail</span><span style="color:#60a5fa;font-weight:600" id="lr-email">18</span></div>
+          <div class="list-row"><span class="list-label">Sem Resposta</span><span class="down" style="font-weight:600" id="lr-sem">450</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECEPTIVO -->
+  <div class="page" id="page-receptivo">
+    <div class="sec-title"><h2><span>⚡</span>Visão Geral — Receptivo</h2><p>Dados consolidados — não se aplica filtro de campanha</p></div>
+    <div class="kpi-grid g4">
+      <div class="kpi"><div class="kpi-label">📊 Total Atendimentos</div><div class="kpi-val lg">48.961</div><div class="kpi-sub">Voz + Digitais</div></div>
+      <div class="kpi"><div class="kpi-label">💻 Digitais</div><div class="kpi-val lg">18.292</div></div>
+      <div class="kpi"><div class="kpi-label">⭐ Respostas CSAT</div><div class="kpi-val lg">361</div></div>
+      <div class="kpi"><div class="kpi-label">😊 CSAT Geral</div><div class="kpi-val lg">4,2</div></div>
+    </div>
+    <div class="chart-row cr2" style="margin-top:16px;height:300px">
+      <div class="chart-card"><div class="ct">Distribuição por Canal</div><canvas id="sv-canais"></canvas></div>
+      <div class="chart-card"><div class="ct">Indicadores de Qualidade</div>
+        <div class="q-row"><div class="q-head"><span>TMA - Tempo Médio Atend.</span><span>03:24 ✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:85%"></div></div></div>
+        <div class="q-row"><div class="q-head"><span>TME - Tempo Médio Espera</span><span>01:12 ✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:90%"></div></div></div>
+        <div class="q-row"><div class="q-head"><span>ICT - Atendidas em 30s</span><span>84% ✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:84%"></div></div></div>
+        <div class="q-row"><div class="q-head"><span>IAR - Atend. Registrados</span><span>96% ✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:96%"></div></div></div>
+        <div class="q-row"><div class="q-head"><span>CSAT - Satisfação</span><span>4,2 ⭐</span></div><div class="bar-bg"><div class="bar-fill" style="width:84%"></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAUDE -->
+  <div class="page" id="page-saude">
+    <div class="sec-title"><h2><span>⚡</span>Visão Geral — Promoção Saúde</h2><p>Dados consolidados — não se aplica filtro de campanha</p></div>
+    <div class="kpi-grid g4">
+      <div class="kpi"><div class="kpi-label">📋 Total de Intenções</div><div class="kpi-val lg">2.946</div></div>
+      <div class="kpi"><div class="kpi-label">✅ Agendadas</div><div class="kpi-val lg">2.589</div><div class="kpi-trend up">↑ 8,2%</div></div>
+      <div class="kpi"><div class="kpi-label">❌ Canceladas</div><div class="kpi-val lg">471</div></div>
+      <div class="kpi"><div class="kpi-label">📈 Taxa Agendamento</div><div class="kpi-val lg">87,88%</div></div>
+    </div>
+    <div class="chart-row cr2" style="margin-top:16px;height:300px">
+      <div class="chart-card"><div class="ct">Intenções por Empresa</div><canvas id="sv-empresas"></canvas></div>
+      <div class="chart-card"><div class="ct">Status dos Agendamentos</div><div style="display:flex;justify-content:center;height:90%"><canvas id="sv-saude-pie" style="max-width:240px"></canvas></div></div>
+    </div>
+  </div>
+
+  <!-- SAC -->
+  <div class="page" id="page-sac">
+    <div class="sec-title"><h2><span>⚡</span>Visão Geral — SAC</h2><p>Dados consolidados — não se aplica filtro de campanha</p></div>
+    <div class="kpi-grid g4">
+      <div class="kpi"><div class="kpi-label">📞 Total de SAC's</div><div class="kpi-val lg">2.162</div></div>
+      <div class="kpi"><div class="kpi-label">⏱️ Tempo Médio Resposta</div><div class="kpi-val lg">24h</div></div>
+      <div class="kpi"><div class="kpi-label">😊 Satisfeitos</div><div class="kpi-val lg">406</div><div class="kpi-trend up">↑ 5,2%</div></div>
+      <div class="kpi"><div class="kpi-label">😟 Insatisfeitos</div><div class="kpi-val lg">66</div></div>
+    </div>
+    <div class="chart-row cr2" style="margin-top:16px;height:300px">
+      <div class="chart-card"><div class="ct">Série Histórica</div><canvas id="sv-sac-line"></canvas></div>
+      <div class="chart-card"><div class="ct">Nível de Satisfação</div><div style="display:flex;justify-content:center;height:90%"><canvas id="sv-sac-pie" style="max-width:240px"></canvas></div></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- VIDEOWALL -->
+<div id="wall-view">
+  <div class="wall-cell" style="border-color:#f97316">
+    <div class="wall-cell-title">📞 ATIVO — <span id="w-camp-label">Todas as Campanhas</span></div>
+    <div class="wall-cell-body">
+      <div class="kpi-grid g4">
+        <div class="kpi"><div class="kpi-label">Empresas</div><div class="kpi-val" id="wkv-empresas">783</div></div>
+        <div class="kpi"><div class="kpi-label">Tentativas</div><div class="kpi-val" id="wkv-tentativas">6.566</div></div>
+        <div class="kpi"><div class="kpi-label">Interessados</div><div class="kpi-val" id="wkv-interessados">148</div><div class="kpi-trend up" id="wkv-trend">↑ 12,5%</div></div>
+        <div class="kpi"><div class="kpi-label">Tx. Conversão</div><div class="kpi-val" id="wkv-conversao">97,37%</div></div>
+      </div>
+      <div class="chart-row cr2" style="flex:1;min-height:0">
+        <div class="chart-card"><div class="ct">Status</div><canvas id="w-status"></canvas></div>
+        <div class="chart-card"><div class="ct">WhatsApp</div><div style="display:flex;justify-content:center;height:85%"><canvas id="w-wpp" style="max-width:130px"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="wall-cell" style="border-color:#3b82f6">
+    <div class="wall-cell-title" style="color:#3b82f6">📨 RECEPTIVO — Voz + Digitais</div>
+    <div class="wall-cell-body">
+      <div class="kpi-grid g4">
+        <div class="kpi"><div class="kpi-label">Total Atend.</div><div class="kpi-val">62.260</div></div>
+        <div class="kpi"><div class="kpi-label">Digitais</div><div class="kpi-val">25.240</div></div>
+        <div class="kpi"><div class="kpi-label">CSAT Resp.</div><div class="kpi-val">251</div></div>
+        <div class="kpi"><div class="kpi-label">CSAT Geral</div><div class="kpi-val">4,2 ⭐</div></div>
+      </div>
+      <div class="chart-row cr2" style="flex:1;min-height:0">
+        <div class="chart-card"><div class="ct">Por Canal</div><canvas id="w-canais"></canvas></div>
+        <div class="chart-card"><div class="ct">Qualidade</div>
+          <div class="q-row"><div class="q-head"><span>TMA</span><span>03:24✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:85%"></div></div></div>
+          <div class="q-row"><div class="q-head"><span>TME</span><span>01:12✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:90%"></div></div></div>
+          <div class="q-row"><div class="q-head"><span>ICT</span><span>84%✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:84%"></div></div></div>
+          <div class="q-row"><div class="q-head"><span>IAR</span><span>96%✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:96%"></div></div></div>
+          <div class="q-row"><div class="q-head"><span>CSAT</span><span>4,2⭐</span></div><div class="bar-bg"><div class="bar-fill" style="width:84%"></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="wall-cell" style="border-color:#22c55e">
+    <div class="wall-cell-title" style="color:#22c55e">❤️ PROMOÇÃO SAÚDE — Agendamentos</div>
+    <div class="wall-cell-body">
+      <div class="kpi-grid g4">
+        <div class="kpi"><div class="kpi-label">Intenções</div><div class="kpi-val">2.946</div></div>
+        <div class="kpi"><div class="kpi-label">Agendadas</div><div class="kpi-val">2.589</div><div class="kpi-trend up">↑ 8,2%</div></div>
+        <div class="kpi"><div class="kpi-label">Canceladas</div><div class="kpi-val">471</div></div>
+        <div class="kpi"><div class="kpi-label">Taxa Agend.</div><div class="kpi-val">87,88%</div></div>
+      </div>
+      <div class="chart-row cr2" style="flex:1;min-height:0">
+        <div class="chart-card"><div class="ct">Por Empresa</div><canvas id="w-empresas"></canvas></div>
+        <div class="chart-card"><div class="ct">Status</div><div style="display:flex;justify-content:center;height:85%"><canvas id="w-saude-pie" style="max-width:130px"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="wall-cell" style="border-color:#a855f7">
+    <div class="wall-cell-title" style="color:#a855f7">🎧 SAC — Atendimento ao Cliente</div>
+    <div class="wall-cell-body">
+      <div class="kpi-grid g4">
+        <div class="kpi"><div class="kpi-label">Total SACs</div><div class="kpi-val">2.162</div></div>
+        <div class="kpi"><div class="kpi-label">Tempo Resp.</div><div class="kpi-val">24h</div></div>
+        <div class="kpi"><div class="kpi-label">Satisfeitos</div><div class="kpi-val">406</div><div class="kpi-trend up">↑ 5,2%</div></div>
+        <div class="kpi"><div class="kpi-label">Insatisfeitos</div><div class="kpi-val">66</div></div>
+      </div>
+      <div class="chart-row cr2" style="flex:1;min-height:0">
+        <div class="chart-card"><div class="ct">Série Histórica</div><canvas id="w-sac-line"></canvas></div>
+        <div class="chart-card"><div class="ct">Satisfação</div><div style="display:flex;justify-content:center;height:85%"><canvas id="w-sac-pie" style="max-width:130px"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KIOSK -->
+<div id="kiosk">
+  <button id="k-close" onclick="closeKiosk()">✕ Fechar</button>
+  <div id="k-bar-wrap"><div id="k-bar"></div></div>
+  <div id="k-content">
+    <div class="k-page show" id="kp-ativo">
+      <div class="sec-title"><h2><span>⚡</span>Ativo — <span id="kp-camp-label" style="font-size:15px;color:#9ca3af"></span></h2></div>
+      <div class="kpi-grid g4">
+        <div class="kpi"><div class="kpi-label">🏢 Empresas</div><div class="kpi-val" style="font-size:40px" id="kkv-empresas">783</div></div>
+        <div class="kpi"><div class="kpi-label">📞 Tentativas</div><div class="kpi-val" style="font-size:40px" id="kkv-tentativas">6.566</div></div>
+        <div class="kpi"><div class="kpi-label">⭐ Interessados</div><div class="kpi-val" style="font-size:40px" id="kkv-interessados">148</div><div class="kpi-trend up" style="font-size:14px" id="kkv-trend">↑ 12,5%</div></div>
+        <div class="kpi"><div class="kpi-label">📈 Tx. Conversão</div><div class="kpi-val" style="font-size:40px" id="kkv-conversao">97,37%</div></div>
+      </div>
+      <div class="chart-row cr2" style="margin-top:20px;height:280px">
+        <div class="chart-card"><div class="ct">Distribuição por Status</div><canvas id="kp-status"></canvas></div>
+        <div class="chart-card"><div class="ct">Evolução Diária</div><canvas id="kp-evolucao"></canvas></div>
+      </div>
+    </div>
+    <div class="k-page" id="kp-receptivo">
+      <div class="sec-title"><h2><span>⚡</span>Receptivo</h2></div>
+      <div class="kpi-grid g4">
+        <div class="kpi"><div class="kpi-label">📊 Total Atend.</div><div class="kpi-val" style="font-size:40px">62.260</div></div>
+        <div class="kpi"><div class="kpi-label">💻 Digitais</div><div class="kpi-val" style="font-size:40px">25.240</div></div>
+        <div class="kpi"><div class="kpi-label">⭐ CSAT Resp.</div><div class="kpi-val" style="font-size:40px">251</div></div>
+        <div class="kpi"><div class="kpi-label">😊 CSAT Geral</div><div class="kpi-val" style="font-size:40px">4,2</div></div>
+      </div>
+      <div class="chart-row cr2" style="margin-top:20px;height:280px">
+        <div class="chart-card"><div class="ct">Por Canal</div><canvas id="kp-canais"></canvas></div>
+        <div class="chart-card"><div class="ct">Indicadores de Qualidade</div>
+          <div class="q-row"><div class="q-head"><span>TMA</span><span>03:24 ✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:85%"></div></div></div>
+          <div class="q-row"><div class="q-head"><span>TME</span><span>01:12 ✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:90%"></div></div></div>
+          <div class="q-row"><div class="q-head"><span>ICT</span><span>84% ✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:84%"></div></div></div>
+          <div class="q-row"><div class="q-head"><span>IAR</span><span>96% ✓</span></div><div class="bar-bg"><div class="bar-fill" style="width:96%"></div></div></div>
+          <div class="q-row"><div class="q-head"><span>CSAT</span><span>4,2 ⭐</span></div><div class="bar-bg"><div class="bar-fill" style="width:84%"></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="k-page" id="kp-saude">
+      <div class="sec-title"><h2><span>⚡</span>Promoção Saúde</h2></div>
+      <div class="kpi-grid g4">
+        <div class="kpi"><div class="kpi-label">📋 Intenções</div><div class="kpi-val" style="font-size:40px">2.946</div></div>
+        <div class="kpi"><div class="kpi-label">✅ Agendadas</div><div class="kpi-val" style="font-size:40px">2.589</div><div class="kpi-trend up" style="font-size:14px">↑ 8,2%</div></div>
+        <div class="kpi"><div class="kpi-label">❌ Canceladas</div><div class="kpi-val" style="font-size:40px">471</div></div>
+        <div class="kpi"><div class="kpi-label">📈 Taxa</div><div class="kpi-val" style="font-size:40px">87,88%</div></div>
+      </div>
+      <div class="chart-row cr2" style="margin-top:20px;height:280px">
+        <div class="chart-card"><div class="ct">Por Empresa</div><canvas id="kp-empresas"></canvas></div>
+        <div class="chart-card"><div class="ct">Status</div><div style="display:flex;justify-content:center;height:85%"><canvas id="kp-saude-pie" style="max-width:240px"></canvas></div></div>
+      </div>
+    </div>
+    <div class="k-page" id="kp-sac">
+      <div class="sec-title"><h2><span>⚡</span>SAC</h2></div>
+      <div class="kpi-grid g4">
+        <div class="kpi"><div class="kpi-label">📞 Total SACs</div><div class="kpi-val" style="font-size:40px">2.162</div></div>
+        <div class="kpi"><div class="kpi-label">⏱️ Tempo Resp.</div><div class="kpi-val" style="font-size:40px">24h</div></div>
+        <div class="kpi"><div class="kpi-label">😊 Satisfeitos</div><div class="kpi-val" style="font-size:40px">406</div><div class="kpi-trend up" style="font-size:14px">↑ 5,2%</div></div>
+        <div class="kpi"><div class="kpi-label">😟 Insatisfeitos</div><div class="kpi-val" style="font-size:40px">66</div></div>
+      </div>
+      <div class="chart-row cr2" style="margin-top:20px;height:280px">
+        <div class="chart-card"><div class="ct">Série Histórica</div><canvas id="kp-sac-line"></canvas></div>
+        <div class="chart-card"><div class="ct">Satisfação</div><div style="display:flex;justify-content:center;height:85%"><canvas id="kp-sac-pie" style="max-width:240px"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+  <div id="k-nav">
+    <span id="k-label"></span>
+    <div class="p-dot active" onclick="goKiosk(0)" id="d0"></div>
+    <div class="p-dot" onclick="goKiosk(1)" id="d1"></div>
+    <div class="p-dot" onclick="goKiosk(2)" id="d2"></div>
+    <div class="p-dot" onclick="goKiosk(3)" id="d3"></div>
+  </div>
+</div>
+
+<script>
+// ═══ DADOS POR CAMPANHA ═══════════════════════════════════
+const CAMPAIGNS = {
+  todas: {
+    label: '', desc: 'Todas as campanhas — Retomada da Trilha + Smart Factory',
+    empresas: '681', tentativas: '3.937', interessados: '150', conversao: '66,96%',
+    decisor: '224', decisorSub: 'Retomada + Smart Factory', media: '5,78',
+    trend: '↑ 12,5%',
+    statusLabels: ['INTERESSADO','FORA DE ÁREA','NÃO ATENDE','JÁ INFORMADO','INDISPONÍVEL','N. INTERESSE'],
+    statusData: [37,19,16,5,1,1],
+    evolucaoLabels: ['19/Mar','20/Mar','21/Mar','22/Mar','23/Mar'],
+    tentDia: [710,835,770,880,742], convDia: [26,34,29,35,26],
+    showWpp: true,
+    wppEnv: '516', wppResp: '66', wppTaxa: '12,79%', wppSem: '450',
+    wppInfo: '32', wppEmail: '18',
+    wppPie: [66,450]
+  },
+  retomada: {
+    label: '— Retomada da Trilha', desc: 'Campanha Retomada da Trilha — dados filtrados',
+    empresas: '79', tentativas: '712', interessados: '46', conversao: '92,00%',
+    decisor: '50', decisorSub: 'Apenas Retomada da Trilha', media: '9,01',
+    trend: '↑ 9,2%',
+    statusLabels: ['INTERESSADO','FORA DE ÁREA','NÃO ATENDE','JÁ INFORMADO','N. INTERESSE'],
+    statusData: [22,11,9,3,1],
+    evolucaoLabels: ['19/Mar','20/Mar','21/Mar','22/Mar','23/Mar'],
+    tentDia: [130,155,140,160,127], convDia: [8,10,9,11,8],
+    showWpp: false,
+    wppEnv:'-',wppResp:'-',wppTaxa:'-',wppSem:'-',wppInfo:'-',wppEmail:'-',wppPie:[0,1]
+  },
+  smart: {
+    label: '— Smart Factory', desc: 'Campanha Smart Factory — dados filtrados',
+    empresas: '602', tentativas: '3.225', interessados: '104', conversao: '59,77%',
+    decisor: '174', decisorSub: 'Apenas Smart Factory', media: '5,36',
+    trend: '↑ 18,3%',
+    statusLabels: ['Tentativa','Interessado','Alô','Contato c/ Decisor'],
+    statusData: [2856,140,41,41],
+    statusColors: ['#3b82f6','#22c55e','#f97316','#a855f7'],
+    statusTooltips: [
+      'Fora de Área / Cx Mensagens\nNão Atendeu\nTel Não Atende / Ocupado\nOcupado\nLigação Muda',
+      'Enviar E-mail',
+      'Engano\nRetornar\nRecado\nCliente Desligou\nContato Indisponível',
+      'Formulário Preenchido\nINFORMADO\nNão tem Interesse'
+    ],
+    evolucaoLabels: ['20/04','22/04','24/04','26/05','27/05','28/05'],
+    tentDia: [291,1846,724,164,106,94], convDia: [48,43,9,28,6,6],
+    showWpp: true,
+    wppEnv: '516', wppResp: '66', wppTaxa: '12,79%', wppSem: '450',
+    wppInfo: '32', wppEmail: '18',
+    wppPie: [66,450]
+  }
+};
+
+// ═══ CHART INSTANCES ══════════════════════════════════════
+const charts = {};
+const CC=['#ff8800','#ff6600','#ffaa00','#cc6600','#ff9933','#ffcc66'];
+const cTooltip={backgroundColor:'#1f2937',titleColor:'#fff',bodyColor:'#9ca3af'};
+const cScales={x:{ticks:{color:'#9ca3af'},grid:{color:'#374151'}},y:{ticks:{color:'#9ca3af'},grid:{color:'#374151'}}};
+const cLeg={labels:{color:'#9ca3af',font:{size:10}}};
+
+function mkChart(id,type,data,extra={},showDatalabels=false){
+  const el=document.getElementById(id);
+  if(!el)return null;
+  if(charts[id]){charts[id].destroy();}
+  const isPie=type==='pie'||type==='doughnut';
+  const dlPlugin = showDatalabels ? {
+    datalabels:{
+      color:'#fff',
+      font:{weight:'bold',size:11},
+      formatter: v => v.toLocaleString('pt-BR'),
+      anchor:'end', align:'end',
+      offset:2,
+      clip:false
+    }
+  } : { datalabels:{display:false} };
+  charts[id]=new Chart(el,{
+    type,data,
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{...cLeg,...(isPie?{position:'bottom'}:{})},tooltip:cTooltip,...dlPlugin},
+      ...(isPie?{}:{scales:{...cScales,...extra}})
+    }
+  });
+  return charts[id];
+}
+
+// ═══ APPLY CAMPAIGN FILTER ════════════════════════════════
+let currentCamp = 'todas';
+let activePage = 'ativo';
+
+function onCampChange(){
+  currentCamp = document.getElementById('camp-sel').value;
+  applyFilter();
+}
+
+function applyFilter(){
+  const d = CAMPAIGNS[currentCamp];
+
+  // Badge
+  const badge = document.getElementById('camp-badge');
+  badge.className = 'camp-badge ' + currentCamp;
+  badge.textContent = currentCamp==='todas' ? '' : (currentCamp==='retomada' ? 'Retomada da Trilha' : 'Smart Factory');
+  badge.style.display = currentCamp==='todas' ? 'none' : 'inline';
+
+  // Notice on non-ativo pages
+  const notice = document.getElementById('camp-notice');
+  notice.style.display = (currentCamp!=='todas' && activePage!=='ativo') ? 'block' : 'none';
+
+  // Update KPIs — Single View
+  document.getElementById('sv-camp-label').textContent = d.label;
+  document.getElementById('sv-camp-desc').textContent = d.desc;
+  document.getElementById('kv-empresas').textContent = d.empresas;
+  document.getElementById('kv-tentativas').textContent = d.tentativas;
+  document.getElementById('kv-interessados').textContent = d.interessados;
+  document.getElementById('kv-conversao').textContent = d.conversao;
+  document.getElementById('kv-decisor').textContent = d.decisor;
+  document.getElementById('kv-decisor-sub').textContent = d.decisorSub;
+  document.getElementById('kv-media').textContent = d.media;
+  document.getElementById('kv-media-sub').textContent = 'Média: ' + d.media + ' por empresa';
+  document.getElementById('kv-int-trend').textContent = d.trend;
+
+  // WhatsApp section visibility
+  const wppSec = document.getElementById('wpp-section');
+  wppSec.style.display = d.showWpp ? 'block' : 'none';
+  if(d.showWpp){
+    document.getElementById('kv-wpp-env').textContent = d.wppEnv;
+    document.getElementById('kv-wpp-resp').textContent = d.wppResp;
+    document.getElementById('kv-wpp-taxa').textContent = d.wppTaxa;
+    document.getElementById('kv-wpp-sem').textContent = d.wppSem;
+    document.getElementById('lr-env').textContent = d.wppEnv;
+    document.getElementById('lr-info').textContent = d.wppInfo;
+    document.getElementById('lr-email').textContent = d.wppEmail;
+    document.getElementById('lr-sem').textContent = d.wppSem;
+  }
+
+  // Update KPIs — Videowall
+  document.getElementById('w-camp-label').textContent = d.label ? d.label.replace('— ','') : 'Todas as Campanhas';
+  document.getElementById('wkv-empresas').textContent = d.empresas;
+  document.getElementById('wkv-tentativas').textContent = d.tentativas;
+  document.getElementById('wkv-interessados').textContent = d.interessados;
+  document.getElementById('wkv-conversao').textContent = d.conversao;
+  document.getElementById('wkv-trend').textContent = d.trend;
+
+  // Update KPIs — Kiosk
+  document.getElementById('kp-camp-label').textContent = d.label;
+  document.getElementById('kkv-empresas').textContent = d.empresas;
+  document.getElementById('kkv-tentativas').textContent = d.tentativas;
+  document.getElementById('kkv-interessados').textContent = d.interessados;
+  document.getElementById('kkv-conversao').textContent = d.conversao;
+  document.getElementById('kkv-trend').textContent = d.trend;
+
+  // Rebuild Ativo charts
+  const legendEl = document.getElementById('status-legend');
+  if(legendEl){
+    if(d.statusTooltips){
+      const colors = d.statusColors || [];
+      legendEl.innerHTML = '<strong style="color:#9ca3af;font-size:9.5px">Legenda: </strong>' +
+        d.statusLabels.map((lbl,i)=>
+          `<span style="color:${colors[i]||'#fff'};font-weight:600">${lbl} — ${d.statusData[i].toLocaleString('pt-BR')}</span>`+
+          ` <span style="color:#6b7280">(${d.statusTooltips[i].replace(/\n/g,', ')})</span>`
+        ).join(' &nbsp;·&nbsp; ');
+      legendEl.style.display='block';
+    } else {
+      legendEl.innerHTML='';
+      legendEl.style.display='none';
+    }
+  }
+
+  const statusBg = d.statusColors || Array(d.statusLabels.length).fill('#ff8800');
+  const statusD={labels:d.statusLabels,datasets:[{label:'Qtd',data:d.statusData,backgroundColor:statusBg}]};
+  const evoD={labels:d.evolucaoLabels,datasets:[
+    {label:'Tentativas',data:d.tentDia,borderColor:'#ff8800',backgroundColor:'rgba(249,115,22,.25)',fill:true},
+    {label:'Conversões',data:d.convDia,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.25)',fill:true}
+  ]};
+  const wppD={labels:['Respostas','Sem Resposta'],datasets:[{data:d.wppPie,backgroundColor:['#ff8800','#374151']}]};
+
+  mkChart('sv-status','bar',statusD,{indexAxis:'y'},true);
+  mkChart('sv-evolucao','line',evoD);
+  if(d.showWpp) mkChart('sv-wpp','doughnut',wppD);
+
+  // Wall charts (only if visible)
+  if(wallOn){
+    mkChart('w-status','bar',statusD,{indexAxis:'y'});
+    if(d.showWpp) mkChart('w-wpp','doughnut',wppD);
+  }
+
+  // Kiosk charts (only if visible)
+  if(document.getElementById('kiosk').classList.contains('show')){
+    mkChart('kp-status','bar',statusD,{indexAxis:'y'});
+    mkChart('kp-evolucao','line',evoD);
+  }
+}
+
+// ═══ STATIC CHARTS (non-ativo) ════════════════════════════
+let staticInit=false;
+function initStaticCharts(){
+  if(staticInit)return;staticInit=true;
+  const CANAIS={labels:['Telefone','E-mail','WhatsApp','Fale Conosco','Chat','Rede Social'],datasets:[{label:'Atend.',data:[15485,10982,6400,750,160,273],backgroundColor:'#3b82f6'}]};
+  const EMP={labels:['Firjan','Constellation','PGE','Club Med','Check-up','Checkup'],datasets:[{label:'Intenções',data:[634,449,382,114,92,86],backgroundColor:'#22c55e'}]};
+  const SPIE={labels:['Agendadas','Canceladas','Pendentes'],datasets:[{data:[2589,471,30],backgroundColor:['#22c55e','#ef4444','#f97316']}]};
+  const SLINE={labels:['Jan','Fev','Mar','Abr','Mai'],datasets:[{label:'Satisfeitos',data:[58,64,72,68,82],borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.2)',fill:true},{label:'Insatisfeitos',data:[12,9,11,14,10],borderColor:'#ef4444',backgroundColor:'rgba(239,68,68,.2)',fill:true}]};
+  const SPIE2={labels:['Muito Satisfeito','Satisfeito','Neutro','Insatisfeito','M. Insatisfeito'],datasets:[{data:[212,194,82,46,20],backgroundColor:CC}]};
+  mkChart('sv-canais','bar',CANAIS);
+  mkChart('sv-empresas','bar',EMP,{indexAxis:'y'});
+  mkChart('sv-saude-pie','doughnut',SPIE);
+  mkChart('sv-sac-line','line',SLINE);
+  mkChart('sv-sac-pie','doughnut',SPIE2);
+  // Wall
+  mkChart('w-canais','bar',CANAIS);
+  mkChart('w-empresas','bar',EMP,{indexAxis:'y'});
+  mkChart('w-saude-pie','doughnut',SPIE);
+  mkChart('w-sac-line','line',SLINE);
+  mkChart('w-sac-pie','doughnut',SPIE2);
+  // Kiosk
+  mkChart('kp-canais','bar',CANAIS);
+  mkChart('kp-empresas','bar',EMP,{indexAxis:'y'});
+  mkChart('kp-saude-pie','doughnut',SPIE);
+  mkChart('kp-sac-line','line',SLINE);
+  mkChart('kp-sac-pie','doughnut',SPIE2);
+}
+
+// ═══ NAVIGATION ═══════════════════════════════════════════
+function showPage(id,btn){
+  if(wallOn)toggleWall();
+  activePage = id;
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.btn-nav').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  if(btn)btn.classList.add('active');
+  const notice = document.getElementById('camp-notice');
+  notice.style.display = (currentCamp!=='todas' && id!=='ativo') ? 'block' : 'none';
+  setTimeout(()=>{ initStaticCharts(); applyFilter(); },80);
+}
+
+let wallOn=false;
+function toggleWall(){
+  wallOn=!wallOn;
+  const sv=document.getElementById('single-view');
+  const wv=document.getElementById('wall-view');
+  const btn=document.getElementById('btn-wall');
+  const notice=document.getElementById('camp-notice');
+  if(wallOn){
+    sv.style.display='none';
+    notice.style.display='none';
+    wv.classList.add('show');
+    btn.classList.add('active');
+    btn.textContent='✕ Fechar Videowall';
+    setTimeout(()=>{ initStaticCharts(); applyFilter(); },80);
+  } else {
+    wv.classList.remove('show');
+    sv.style.display='block';
+    btn.classList.remove('active');
+    btn.textContent='⊞ Videowall 2×2';
+  }
+}
+
+// ═══ KIOSK ════════════════════════════════════════════════
+const KP=['kp-ativo','kp-receptivo','kp-saude','kp-sac'];
+const KN=['Ativo','Receptivo','Promoção Saúde','SAC'];
+let kIdx=0,kProg=0,kTimer=null;
+const TICK=50,DUR=5000;
+
+function goKiosk(i){
+  document.querySelectorAll('.k-page').forEach(p=>p.classList.remove('show'));
+  document.querySelectorAll('.p-dot').forEach(d=>d.classList.remove('active'));
+  document.getElementById(KP[i]).classList.add('show');
+  document.getElementById('d'+i).classList.add('active');
+  document.getElementById('k-label').textContent=KN[i];
+  kIdx=i;kProg=0;
+  document.getElementById('k-bar').style.width='0%';
+}
+
+function openKiosk(){
+  document.getElementById('kiosk').classList.add('show');
+  initStaticCharts();
+  applyFilter();
+  goKiosk(0);
+  clearInterval(kTimer);
+  kTimer=setInterval(()=>{
+    kProg+=(TICK/DUR)*100;
+    document.getElementById('k-bar').style.width=Math.min(kProg,100)+'%';
+    if(kProg>=100){kIdx=(kIdx+1)%KP.length;goKiosk(kIdx);}
+  },TICK);
+}
+function closeKiosk(){
+  document.getElementById('kiosk').classList.remove('show');
+  clearInterval(kTimer);
+}
+
+// init
+setTimeout(()=>{ applyFilter(); initStaticCharts(); },200);
+</script>
+</body>
+</html>
