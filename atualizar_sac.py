@@ -49,16 +49,14 @@ MAX_DELTA_DIAS = 30
 COL_PROT  = 0   # A  Protocolo
 COL_DATA  = 2   # C  Data do Atendimento
 COL_CANAL = 4   # E  Canal
-COL_PROD  = 5   # F  Produto/Servico   -> filtro
-COL_UNI   = 7   # H  Unidade           -> filtro Entidade (via de-para)
-COL_REG   = 8   # I  Regional
-COL_TIPO  = 9   # J  Tipo de Registro
-COL_FIM   = 12  # M  Data de Finalizacao
-COL_SAT   = 13  # N  Nivel de Satisfacao
-COL_ASSUNTO = 18  # S  Assunto         -> filtro
-
-# de-para Unidade -> Entidade (aba "entidade" do tab_de-para.xlsx)
-DEPARA_PATH = r'Arquivos\bases_apoio\tab_de-para.xlsx'
+COL_PROD  = 5   # F  Produto/Servico    -> filtro
+COL_UNI   = 7   # H  Unidade            -> Ranking por Unidade
+COL_ENT   = 8   # I  Entidade           -> filtro (coluna direta)
+COL_REG   = 9   # J  Regional           -> filtro
+COL_TIPO  = 10  # K  Tipo de Registro   -> filtro
+COL_FIM   = 13  # N  Data de Finalizacao
+COL_SAT   = 14  # O  Nivel de Satisfacao
+COL_ASSUNTO = 19  # T  Assunto          -> filtro
 
 # ═══════════════════════════════════════════════════════════
 # FUNÇÕES
@@ -131,27 +129,6 @@ def sat_code(v):
     return 0
 
 
-def ler_depara_entidade(caminho):
-    """Le a aba 'entidade' do tab_de-para: {Unidade(strip): Entidade}."""
-    import openpyxl
-    mapa = {}
-    try:
-        wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
-        ws = wb['entidade'] if 'entidade' in wb.sheetnames else wb.active
-        first = True
-        for row in ws.iter_rows(values_only=True):
-            if first:
-                first = False
-                continue
-            if row[0] and row[1]:
-                mapa[str(row[0]).strip()] = str(row[1]).strip()
-        wb.close()
-        print(f'  De-para entidade: {len(mapa)} unidades')
-    except Exception as e:
-        print(f'  [AVISO] De-para entidade nao lido: {e}')
-    return mapa
-
-
 def processar(xlsx_bytes):
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
@@ -165,7 +142,6 @@ def processar(xlsx_bytes):
     canal_idx, reg_idx, tipo_idx = {}, {}, {}
     ent_list, assunto_list, prod_list, uni_list = [], [], [], []
     ent_idx, assunto_idx, prod_idx, uni_idx = {}, {}, {}, {}
-    depara_ent = ler_depara_entidade(DEPARA_PATH)
 
     def get_idx(val, lst, mp):
         v = str(val).strip() if val is not None else ''
@@ -196,10 +172,8 @@ def processar(xlsx_bytes):
         ci = get_idx(cel(r, COL_CANAL), canal_list, canal_idx)
         ri = get_idx(cel(r, COL_REG),   reg_list,   reg_idx)
         ti = get_idx(cel(r, COL_TIPO),  tipo_list,  tipo_idx)
-        # Entidade = de-para da Unidade (col H); se nao mapear, fica vazio
-        uni_raw = str(cel(r, COL_UNI)).strip() if cel(r, COL_UNI) is not None else ''
-        ei = get_idx(depara_ent.get(uni_raw, ''), ent_list, ent_idx)
-        ui = get_idx(uni_raw, uni_list, uni_idx)          # Unidade bruta (ranking)
+        ei = get_idx(cel(r, COL_ENT), ent_list, ent_idx)   # Entidade (col I, direta)
+        ui = get_idx(cel(r, COL_UNI), uni_list, uni_idx)   # Unidade (col H) -> ranking
         aci = get_idx(cel(r, COL_ASSUNTO), assunto_list, assunto_idx)
         pi = get_idx(cel(r, COL_PROD),    prod_list,    prod_idx)
         sc = sat_code(cel(r, COL_SAT))
