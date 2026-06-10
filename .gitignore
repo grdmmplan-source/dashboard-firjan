@@ -1,0 +1,139 @@
+# Git Ignore — Dashboard Firjan
+
+# ====================================
+# CREDENCIAIS & CONFIGURAÇÃO LOCAL
+# ====================================
+.env
+.env.local
+.env.*.local
+.env.prod
+credentials.json
+*.key
+*.pem
+.aws/
+
+# ====================================
+# PYTHON
+# ====================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+venv/
+env/
+ENV/
+.venv
+
+# ====================================
+# IDE & EDITOR
+# ====================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.sublime-project
+.sublime-workspace
+*.log
+
+# ====================================
+# OS
+# ====================================
+Thumbs.db
+.DS_Store
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# ====================================
+# DADOS GERADOS (NÃO COMMITAR)
+# ====================================
+erros_sac.txt
+*.tmp
+*.temp
+_chk.js
+_s.js
+
+# ====================================
+# ARQUIVOS DE DADOS (Excel local)
+# ====================================
+# Dados ATUALIZAVEIS (grandes e mudam sempre, ex: Retorno_RECEPTIVO 19MB) - NAO versionar
+Arquivos/atualizaveis/
+# Dados estaticos do Ativo (nao_atualizaveis, ~770KB) e o de-para (bases_apoio)
+# SAO versionados (pequenos e necessarios para rodar os scripts)
+
+# ====================================
+# CACHE & TEMPORÁRIOS DO NAVEGADOR
+# ====================================
+.cache/
+node_modules/
+dist/
+build/
+*.bundle.js
+
+# ====================================
+# TESTES & DEBUG
+# ====================================
+.pytest_cache/
+.coverage
+htmlcov/
+test-results.xml
+*.test.html
+
+# ====================================
+# SISTEMA OPERACIONAL & BACKUP
+# ====================================
+*.bak
+*.backup
+*.tmp
+*.swp
+*.swo
+*~
+
+# ====================================
+# CUSTOM LOCAL
+# ====================================
+# Arquivo de configuração local (cada máquina pode ter seu próprio)
+settings.local.json
+config.local.py
+# Template zerado (testes)
+_template_zerado.html
+# Pasta de teste Claude
+.claude/
+
+# ====================================
+# ARQUIVOS NÃO RASTREADOS (git clean)
+# ====================================
+# Ignora arquivos não-versionados específicos
+launch.json
+
+# ====================================
+# VERSIONAMENTO GIT
+# ====================================
+.git/
+.gitattributes
+# Não ignora o .gitignore nem documentação
+!.gitignore
+!README.md
+!GUIA_INSTALACAO.md
+!ARQUITETURA.md
+!.env.example
