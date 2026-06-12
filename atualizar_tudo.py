@@ -94,7 +94,8 @@ def main():
         print()
         print('=' * 50)
         print('  CONCLUIDO! index.html atualizado.')
-        print('  Rode publicar.bat para enviar ao GitHub.')
+        if '--no-pause' not in sys.argv:
+            print('  Rode publicar.bat para enviar ao GitHub.')
         print('=' * 50)
         print()
 
@@ -104,4 +105,5 @@ def main():
 
 if __name__ == '__main__':
     main()
-    input('Pressione ENTER para fechar...')
+    if '--no-pause' not in sys.argv:
+        input('Pressione ENTER para fechar...')

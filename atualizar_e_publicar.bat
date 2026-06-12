@@ -7,7 +7,7 @@ echo ========================================
 echo.
 
 echo [1/2] Calculando dados do Excel...
-python atualizar_tudo.py
+python atualizar_tudo.py --no-pause
 if %errorlevel% neq 0 (
     echo.
     echo [ERRO] Falha ao processar o Excel.
