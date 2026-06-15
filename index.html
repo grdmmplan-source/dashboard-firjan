@@ -168,7 +168,7 @@ select.camp:focus{outline:none;border-color:#f97316}
 <div id="topbar">
   <div class="logo-row">
     <div class="logo-icon">F</div>
-    <div><div class="logo-name">FIRJAN</div><div class="logo-sub">Dashboard Unificado</div><div class="logo-sub" id="last-update" style="color:#22c55e">🔄 Atualizado em <!--LU-->15/06/2026 14:57<!--/LU--></div></div>
+    <div><div class="logo-name">FIRJAN</div><div class="logo-sub">Dashboard Unificado</div><div class="logo-sub" id="last-update" style="color:#22c55e">🔄 Atualizado em <!--LU-->15/06/2026 15:12<!--/LU--></div></div>
     <div class="sep"></div>
     <select class="camp" id="camp-sel" onchange="onCampChange()">
       <option value="todas">Todas as campanhas</option>
@@ -329,7 +329,17 @@ select.camp:focus{outline:none;border-color:#f97316}
       <div class="kpi"><div class="kpi-label">😊 CSAT Geral</div><div class="kpi-val lg" id="cp-csatger">0</div></div>
     </div>
     <div class="chart-row cr2" style="margin-top:16px;height:320px">
-      <div class="chart-card"><div class="ct">Distribuição por Canal</div><canvas id="cp-canais"></canvas></div>
+      <div class="chart-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="ct" style="margin:0">Distribuição</div>
+          <div class="seg">
+            <button id="cp-view-canal" class="seg-btn active" onclick="campSetView('canal')">Por Canal</button>
+            <button id="cp-view-uni" class="seg-btn" onclick="campSetView('uni')">Por Unidade</button>
+            <button id="cp-view-faixa" class="seg-btn" onclick="campSetView('faixa')">Por Faixa Etária</button>
+          </div>
+        </div>
+        <div style="height:260px"><canvas id="cp-dist"></canvas></div>
+      </div>
       <div class="chart-card"><div class="ct">Indicadores de Qualidade</div>
         <div class="q-row"><div class="q-head"><span>TMA - Tempo Médio Atend.</span><span id="cp-tma">-- </span></div><div class="bar-bg"><div class="bar-fill" id="cp-tma-bar" style="width:0%"></div></div></div>
         <div class="q-row"><div class="q-head"><span>TME - Tempo Médio Espera</span><span id="cp-tme">-- </span></div><div class="bar-bg"><div class="bar-fill" id="cp-tme-bar" style="width:0%"></div></div></div>
@@ -337,18 +347,6 @@ select.camp:focus{outline:none;border-color:#f97316}
         <div class="q-row"><div class="q-head"><span>IAR - Atend. Registrados</span><span id="cp-iar">-- </span></div><div class="bar-bg"><div class="bar-fill" id="cp-iar-bar" style="width:0%"></div></div></div>
         <div class="q-row"><div class="q-head"><span>IAL - Abandono em Espera</span><span id="cp-ial">-- </span></div><div class="bar-bg"><div class="bar-fill" id="cp-ial-bar" style="width:0%"></div></div></div>
         <div class="q-row"><div class="q-head"><span>CSAT - Satisfação</span><span id="cp-csat">-- </span></div><div class="bar-bg"><div class="bar-fill" id="cp-csat-bar" style="width:0%"></div></div></div>
-      </div>
-    </div>
-    <div class="chart-row" style="margin-top:16px;height:340px">
-      <div class="chart-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div class="ct" style="margin:0">Distribuição</div>
-          <div class="seg">
-            <button id="cp-view-uni" class="seg-btn active" onclick="campSetView('uni')">Por Unidade</button>
-            <button id="cp-view-faixa" class="seg-btn" onclick="campSetView('faixa')">Por Faixa Etária</button>
-          </div>
-        </div>
-        <div style="height:280px"><canvas id="cp-dist"></canvas></div>
       </div>
     </div>
   </div>
@@ -582,7 +580,7 @@ select.camp:focus{outline:none;border-color:#f97316}
 
 <script>
 const CAMPAIGNS = {
-                                                                                      /* TODAS_START */
+                                                                                        /* TODAS_START */
   todas: {
     label: '', desc: 'Todas as campanhas — Retomada da Trilha + Smart Factory + Cursos Técnicos Niterói', periodo: '',
     empresas: '948', empresasLabel: '🏢 Empresas / Inscrições',
@@ -602,7 +600,7 @@ const CAMPAIGNS = {
     wppEnv:'0', wppResp:'0', wppTaxa:'0,00%', wppSem:'0', wppInfo:'0', wppEmail:'0', wppPie:[0,1]
   },
   /* TODAS_END */
-                                                                                            /* RETOMADA_START */
+                                                                                              /* RETOMADA_START */
   retomada: {
     label: '— Retomada da Trilha', desc: 'Campanha Retomada da Trilha — dados filtrados', periodo: '09/Mar — 20/Mar',
     empresas: '79', empresasLabel: '🏢 Empresas na Base',
@@ -622,7 +620,7 @@ const CAMPAIGNS = {
     wppEnv:'-', wppResp:'-', wppTaxa:'-', wppSem:'-', wppInfo:'-', wppEmail:'-', wppPie:[0,1]
   },
   /* RETOMADA_END */
-                                                                        /* SMART_START */
+                                                                          /* SMART_START */
   smart: {
     label: '— Smart Factory', desc: 'Campanha Smart Factory — dados filtrados', periodo: '20/Abr — 28/Mai',
     empresas: '601', empresasLabel: '🏢 Empresas na Base',
@@ -643,7 +641,7 @@ const CAMPAIGNS = {
     wppEnv:'516', wppResp:'66', wppTaxa:'12,79%', wppSem:'450', wppInfo:'62', wppEmail:'4', wppPie:[66,450]
   },
   /* SMART_END */
-                                                                              /* NITEROI_START */
+                                                                                /* NITEROI_START */
   niteroi: {
     label: '— Cursos Técnicos Niterói', desc: 'Campanha Cursos Técnicos Niterói — dados filtrados', periodo: '11/Jun — 12/Jun',
     empresas: '268', empresasLabel: '📋 CPFs Inscritos',
@@ -659,7 +657,7 @@ const CAMPAIGNS = {
     wppTitle: 'WhatsApp — Cursos Técnicos Niterói',
     wppDesc: 'Disparos massivos da campanha Cursos Técnicos Niterói',
     wppKpiLabels: ['📤 Total Disparado','✅ Entregues','📊 Taxa de Entrega','❌ Com Erro'],
-    wppListLabels: ['Total Disparado','Lidos','Enviado (sem entrega)','Com Erro'],
+    wppListLabels: ['Total Disparado','Lidos','Enviado','Com Erro'],
     wppPieLabels: ['Entregues','Com Erro'],
     wppEnv:'313', wppResp:'123', wppTaxa:'39,30%', wppSem:'137', wppInfo:'75', wppEmail:'53', wppPie:[123,137]
   },
@@ -1065,11 +1063,10 @@ function renderUra(){
 }
 
 // ===== Aba Campanha (BSales2, classificacoes que comecam com "Sub") =====
-let campView='uni', campFiltersInit=false;
+let campView='canal', campFiltersInit=false;
 const isSub=r=>r[7]===0 && r[5]>=0 && ((typeof RECEP_ASSUNTO!=='undefined'?RECEP_ASSUNTO:[])[r[5]]||'').toLowerCase().startsWith('sub');
 function campSetView(v){ campView=v;
-  const a=document.getElementById('cp-view-uni'), b=document.getElementById('cp-view-faixa');
-  if(a)a.classList.toggle('active',v==='uni'); if(b)b.classList.toggle('active',v==='faixa');
+  ['canal','uni','faixa'].forEach(k=>{const b=document.getElementById('cp-view-'+k);if(b)b.classList.toggle('active',k===v);});
   renderCamp();
 }
 function initCampFilters(){
@@ -1140,12 +1137,11 @@ function renderCamp(){
   // Distribuicao por Canal
   const cP=Object.entries(canalC).sort((a,b)=>b[1]-a[1]);
   const cpCanalD={labels:cP.length?cP.map(p=>p[0]):['Sem dados'],datasets:[{label:'Atendimentos',data:cP.length?cP.map(p=>p[1]):[0],backgroundColor:'#3b82f6'}]};
-  mkChart('cp-canais','bar',cpCanalD,{},true);
   mkChart('kp-camp-canais','bar',cpCanalD,{},true);
-  // Distribuicao por Unidade / Faixa Etaria (toggle)
-  const src=(campView==='faixa')?faixaC:uniC;
+  // Distribuicao unificada (canal / unidade / faixa)
+  const src=campView==='canal'?canalC:campView==='faixa'?faixaC:uniC;
   const dP=Object.entries(src).sort((a,b)=>b[1]-a[1]).slice(0,15);
-  mkChart('cp-dist','bar',{labels:dP.length?dP.map(p=>p[0]):['Sem dados'],datasets:[{label:'Atendimentos',data:dP.length?dP.map(p=>p[1]):[0],backgroundColor:campView==='faixa'?'#a855f7':'#22c55e'}]},{},true);
+  mkChart('cp-dist','bar',{labels:dP.length?dP.map(p=>p[0]):['Sem dados'],datasets:[{label:'Atendimentos',data:dP.length?dP.map(p=>p[1]):[0],backgroundColor:'#3b82f6'}]},{},true);
 }
 // ===== Serviços por Canal / por Unidade (top 5 cada) =====
 function buildServCards(groups, elId){
