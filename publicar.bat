@@ -1,5 +1,5 @@
 @echo off
-cd /d "%~dp0"
+pushd "%~dp0"
 echo.
 echo ========================================
 echo   PUBLICANDO DASHBOARD FIRJAN...
