@@ -1,6 +1,6 @@
 # Dashboard Firjan Unificado
 
-Dashboard de monitoramento em tempo real das campanhas de atendimento do Grupo Firjan, consolidando dados de múltiplas fontes (Ativo, Saúde, SAC, Receptivo).
+Dashboard de monitoramento em tempo real das campanhas de atendimento do Grupo Firjan, consolidando dados de múltiplas fontes (Ativo, Saúde, SAC, Receptivo, URA e Campanha).
 
 🌐 **Link:** https://grdmmplan-source.github.io/dashboard-firjan/
 
@@ -12,8 +12,10 @@ Dashboard de monitoramento em tempo real das campanhas de atendimento do Grupo F
 |--------|-----------|-------|---------|
 | **Ativo** | Retomada da Trilha + Smart Factory + Cursos Técnicos Niterói | Excel local | Data, Campanha |
 | **Saúde** | Promoção de Saúde | Google Sheets | Data, Ação, Médico |
-| **SAC** | Serviço de Atendimento ao Cliente | SharePoint | Data, Regional, Entidade, Canal, Tipo, Produto, Assunto |
-| **Receptivo** | Receptivo (telefone, chat, email, redes) | Excel local + SharePoint | Data, Canal, Entidade, Unidade |
+| **SAC** | Serviço de Atendimento ao Cliente | SharePoint | Data, Regional, Entidade, Unidade, Canal, Tipo, Produto, Assunto |
+| **Receptivo** | Receptivo (telefone, chat, email, redes sociais) | Excel local + SharePoint | Data, Canal, Regional, Entidade, Unidade |
+| **URA** | Unidade de Resposta Audível | Excel local | Data, Tipo |
+| **Campanha** | Atendimentos BSales2 com classificação "Sub" | Excel local + SharePoint | Data, Canal, Regional, Entidade, Unidade |
 
 ---
 
@@ -33,7 +35,7 @@ pip install openpyxl
 
 ### 3. **Atualizar dados locais**
 ```bash
-# Atualiza tudo (Retomada, Smart, Niterói, Saúde, SAC, Receptivo)
+# Atualiza tudo (Retomada, Smart, Niterói, Saúde, SAC, Receptivo, URA)
 atualizar.bat
 
 # Ou versão com auto-publicação no GitHub
@@ -121,10 +123,17 @@ atualizar_tudo.py
 
 ### **Receptivo**
 - **BSales2 + Discador 1 & 2 + BASE CSAT:** Excel local (`Retorno_RECEPTIVO.xlsx`)
-- **Redes Sociais / Autonomia e Renda:** SharePoint (anonimamente)
+- **Redes Sociais:** SharePoint (Fernanda Castro) — aba "Redes Sociais"; colunas: E=Assunto, F=Unidade, G=Entidade, H=Regional, J=Data, K=Canal
+- **Autonomia e Renda:** SharePoint (Fernanda Castro) — múltiplas abas/meses
 
 ### **URA**
 - **Fonte:** Excel local (`BASE_URA_*.xlsx`)
+- **Dados:** Data, Tipo (Digital/Voz), Classificação (Retido/Resolvido/Abandono/Transferência), TMA, Motivo
+
+### **Campanha**
+- **Fonte:** mesmo `Retorno_RECEPTIVO.xlsx` (aba BSales2) + Redes Sociais SharePoint
+- Subconjunto do Receptivo: linhas BSales2 cuja classificação começa com "Sub"
+- Colunas adicionais: P = Segmento, Q = Pesquisa (Como conheceram)
 
 ---
 
@@ -174,6 +183,15 @@ atualizar_tudo.py
 ### **Receptivo**
 - Total, IAL, ICT, TMA, TME, IAR, CSAT Geral
 - Top 5 Serviços Mais Procurados
+- Filtros em cascata: Data, Canal, Regional, Entidade, Unidade
+- Fontes do filtro de Unidade: BSales2 col W (Unidade2) + Redes Sociais col F
+- Fontes do filtro de Regional: BSales2 col Y (Regional2) + Redes Sociais col H
+- Fontes do filtro de Entidade: BSales2 col X (Entidade2) + Redes Sociais col G
+
+### **URA**
+- Total de acionamentos, Retidos, Resolvidos, Abandonos, Transferências para Humano
+- TMA por classificação
+- Motivos de transferência para humano
 
 ### **Campanha**
 - Total de Atendimentos
@@ -243,4 +261,4 @@ Interno — Grupo DDM
 
 ---
 
-**Última atualização:** 17/06/2026
+**Última atualização:** 17/06/2026 (rev 3)

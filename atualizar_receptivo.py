@@ -60,6 +60,7 @@ REDES_URL = ('https://ddmadvbr-my.sharepoint.com/:x:/g/personal/'
              'IQCobMqlyAWfT7aBxT5EGURCAaAxahCZQjDD0eCyvVChMv0?download=1')
 RS_ASSUNTO  = 4   # E  Assunto
 RS_UNIDADE  = 5   # F  Unidade
+RS_ENT      = 6   # G  Entidade -> filtro Entidade
 RS_REGIONAL = 7   # H  Regional -> filtro Regional
 RS_DATA     = 9   # J  Resolvido (data)
 RS_CANAL    = 10  # K  Observacao -> Canal (Instagram/Facebook/Messenger)
@@ -358,7 +359,6 @@ def processar(caminho):
         aba_r = next((s for s in wbr.sheetnames if 'edes' in s.lower()), None)
         if aba_r:
             wsr = wbr[aba_r]
-            gi_vazio = get_idx('', ent_list, ent_idx)
             for i, r in enumerate(wsr.iter_rows(values_only=True)):
                 if i == 0:
                     continue
@@ -366,11 +366,12 @@ def processar(caminho):
                     continue
                 c = to_dt(cel(r, RS_DATA))
                 dt = (c.year * 10000 + c.month * 100 + c.day) if c else 0
-                ci_rs = get_idx(cel(r, RS_CANAL), canal_list, canal_idx)      # Observacao -> Canal
-                ri_rs = get_idx(cel(r, RS_REGIONAL), reg_list, reg_idx)        # Entidade(G) -> Regional
-                oi = get_idx(cel(r, RS_UNIDADE), uni_list, uni_idx)
-                araw = txt(cel(r, RS_ASSUNTO))
-                data_rows.append([dt, ci_rs, gi_vazio, oi, 0, araw or None, ri_rs, 1, -1, -1])
+                ci_rs = get_idx(cel(r, RS_CANAL), canal_list, canal_idx)
+                gi_rs = get_idx(cel(r, RS_ENT),      ent_list,   ent_idx)
+                ri_rs = get_idx(cel(r, RS_REGIONAL), reg_list,   reg_idx)
+                oi    = get_idx(cel(r, RS_UNIDADE),  uni_list,   uni_idx)
+                araw  = txt(cel(r, RS_ASSUNTO))
+                data_rows.append([dt, ci_rs, gi_rs, oi, 0, araw or None, ri_rs, 1, -1, -1])
                 n_redes += 1
         else:
             print('  [AVISO] Aba "Redes Sociais" nao encontrada no SharePoint.')

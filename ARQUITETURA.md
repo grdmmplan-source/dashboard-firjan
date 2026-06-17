@@ -555,6 +555,7 @@ Se aparecer "LIGAR" no gráfico de distribuição por status:
 | "JA INSCRITO" não agrupa | Raw sem acento ausente no de-para | Adicionar entrada exata em `tab_de-para.xlsx` aba `status` |
 | Taxa de Ocupação mostra `--` | `AUX_GID` vazio ou médicos da AUX sem correspondência em `SAUDE_MED` | Preencher `AUX_GID` em `atualizar_saude.py` e checar ortografia dos nomes |
 | Colunas Receptivo deslocadas | Inserção de novas colunas no BSales2 | Atualizar índices `COL_*` em `atualizar_receptivo.py` |
+| Filtro Unidade/Regional/Entidade mistura fontes | BSales2 e Redes Sociais compartilham as mesmas listas | Esperado — cada fonte contribui com seus valores; verificar `RS_UNI`, `RS_ENT`, `RS_REGIONAL` |
 
 ---
 
@@ -572,22 +573,33 @@ Se aparecer "LIGAR" no gráfico de distribuição por status:
 
 Cada linha: `[dt, canal, entidade, unidade, hc, assunto, regional, src, segmento, pesquisa]`
 
-| Índice | Campo | Fonte | Notas |
-|--------|-------|-------|-------|
-| 0 | `dt` | Col D BSales2 | yyyymmdd int |
-| 1 | `canal` | Col E | índice em `RECEP_CANAL` |
-| 2 | `entidade` | Col X | índice em `RECEP_ENT` |
-| 3 | `unidade` | Col W | índice em `RECEP_UNI` |
-| 4 | `hc` | Col L | 1 se tem classificação (IAR) |
-| 5 | `assunto` | Col L | string ou None |
-| 6 | `regional` | Col Y | índice em `RECEP_REG` |
-| 7 | `src` | — | 0=BSales2, 1=Redes, 2=Autonomia |
-| 8 | `segmento` | Col P | índice em `RECEP_SEG`; -1 para Redes/Autonomia |
-| 9 | `pesquisa` | Col Q | índice em `RECEP_PES`; -1 para Redes/Autonomia |
+| Índice | Campo | Fonte BSales2 | Fonte Redes | Fonte Autonomia |
+|--------|-------|--------------|-------------|-----------------|
+| 0 | `dt` | Col D (Data abertura) | Col J (Resolvido) | Col DATA INICIAL |
+| 1 | `canal` | Col E (Origem do caso) | Col K (Observação) | fixo "Autonomia e Renda" |
+| 2 | `entidade` | Col X (Entidade2) | Col G (Entidade) | vazio |
+| 3 | `unidade` | Col W (Unidade2) | Col F (Unidade) | vazio |
+| 4 | `hc` | Col L (Classificação ≠ vazio) | sempre 0 | sempre 0 |
+| 5 | `assunto` | Col L (Classificação) | Col E (Assunto) | Col CATEGORIA |
+| 6 | `regional` | Col Y (Regional2) | Col H (Regional) | vazio |
+| 7 | `src` | 0 | 1 | 2 |
+| 8 | `segmento` | Col P | -1 | -1 |
+| 9 | `pesquisa` | Col Q | -1 | -1 |
 
 > A aba **Campanha** filtra apenas linhas BSales2 (`src===0`) cujo assunto começa com `"Sub"`.
 
+### Mapeamento de colunas — Redes Sociais (SharePoint)
+
+| Col | Letra | Campo no filtro |
+|-----|-------|----------------|
+| 4 | E | Assunto (top serviços) |
+| 5 | F | Unidade |
+| 6 | G | Entidade |
+| 7 | H | Regional |
+| 9 | J | Data (Resolvido) |
+| 10 | K | Canal (Observação) |
+
 ---
 
-**Versão:** 2.1  
+**Versão:** 2.2  
 **Última atualização:** 17/06/2026
