@@ -417,17 +417,25 @@ def gerar_bloco_retomada(k):
     def js_num_array(lst):
         return '[' + ','.join(str(v) for v in lst) + ']'
 
+    periodo = f"{k['evoLabels'][0]} — {k['evoLabels'][-1]}" if k['evoLabels'] else ''
     bloco = f"""  /* RETOMADA_START */
   retomada: {{
-    label: '— Retomada da Trilha', desc: 'Campanha Retomada da Trilha — dados filtrados',
-    empresas: '{k['empresas']}', tentativas: '{k['tentativas']}', interessados: '{k['interessados']}', conversao: '{k['conversao']}',
+    label: '— Retomada da Trilha', desc: 'Campanha Retomada da Trilha — dados filtrados', periodo: '{periodo}',
+    empresas: '{k['empresas']}', empresasLabel: '🏢 Empresas na Base',
+    mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa',
+    tentativas: '{k['tentativas']}', interessados: '{k['interessados']}', conversao: '{k['conversao']}',
     decisor: '{k['decisor']}', decisorSub: 'Apenas Retomada da Trilha', media: '{k['media']}', trend: '',
     statusLabels: {js_str_array(k['statusLabels'])},
     statusData: {js_num_array(k['statusData'])}, statusColors:null,
     statusTooltips: {js_str_array(k.get('statusTooltips', ['']*len(k['statusLabels'])))},
     evolucaoLabels: {js_str_array(k['evoLabels'])},
     tentDia: {js_num_array(k['tentDia'])}, convDia: {js_num_array(k['convDia'])},
-    showWpp: false, wppEnv:'-', wppResp:'-', wppTaxa:'-', wppSem:'-', wppInfo:'-', wppEmail:'-', wppPie:[0,1]
+    showWpp: false,
+    wppTitle: 'WhatsApp', wppDesc: '',
+    wppKpiLabels: ['📤 Total Enviados','💬 Total Respostas','📊 Taxa de Resposta','🔇 Sem Resposta'],
+    wppListLabels: ['Mensagens Enviadas','Informados','Solicitar E-mail','Sem Resposta'],
+    wppPieLabels: ['Respostas','Sem Resposta'],
+    wppEnv:'-', wppResp:'-', wppTaxa:'-', wppSem:'-', wppInfo:'-', wppEmail:'-', wppPie:[0,1]
   }},
   /* RETOMADA_END */"""
     return bloco
@@ -439,17 +447,25 @@ def gerar_bloco_todas(k):
     def js_num_array(lst):
         return '[' + ','.join(str(v) for v in lst) + ']'
 
+    periodo = f"{k['evoLabels'][0]} — {k['evoLabels'][-1]}" if k['evoLabels'] else ''
     return f"""  /* TODAS_START */
   todas: {{
-    label: '', desc: 'Todas as campanhas — Retomada da Trilha + Smart Factory',
-    empresas: '{k['empresas']}', tentativas: '{k['tentativas']}', interessados: '{k['interessados']}', conversao: '{k['conversao']}',
-    decisor: '{k['decisor']}', decisorSub: 'Retomada + Smart Factory', media: '{k['media']}', trend: '',
+    label: '', desc: 'Todas as campanhas — Retomada da Trilha + Smart Factory + Cursos Técnicos Niterói', periodo: '',
+    empresas: '{k['empresas']}', empresasLabel: '🏢 Empresas / Inscrições',
+    mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa/inscrição',
+    tentativas: '{k['tentativas']}', interessados: '{k['interessados']}', conversao: '{k['conversao']}',
+    decisor: '{k['decisor']}', decisorSub: 'Retomada + Smart Factory + Niterói', media: '{k['media']}', trend: '',
     statusLabels: {js_str_array(k['statusLabels'])},
     statusData: {js_num_array(k['statusData'])}, statusColors:null,
     statusTooltips: {js_str_array(k.get('statusTooltips', ['']*len(k['statusLabels'])))},
     evolucaoLabels: {js_str_array(k['evoLabels'])},
     tentDia: {js_num_array(k['tentDia'])}, convDia: {js_num_array(k['convDia'])},
-    showWpp: false, wppEnv:'0', wppResp:'0', wppTaxa:'0,00%', wppSem:'0', wppInfo:'0', wppEmail:'0', wppPie:[0,1]
+    showWpp: false,
+    wppTitle: 'WhatsApp', wppDesc: '',
+    wppKpiLabels: ['📤 Total Enviados','💬 Total Respostas','📊 Taxa de Resposta','🔇 Sem Resposta'],
+    wppListLabels: ['Mensagens Enviadas','Informados','Solicitar E-mail','Sem Resposta'],
+    wppPieLabels: ['Respostas','Sem Resposta'],
+    wppEnv:'0', wppResp:'0', wppTaxa:'0,00%', wppSem:'0', wppInfo:'0', wppEmail:'0', wppPie:[0,1]
   }},
   /* TODAS_END */"""
 

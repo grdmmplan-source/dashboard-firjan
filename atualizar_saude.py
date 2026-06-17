@@ -27,19 +27,45 @@ import os
 SHEET_ID  = '1bsovvrAr1a5vi9Ny4kujga732cfJp4zpRNTYphpxJos'
 GID       = '0'
 CSV_URL   = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}'
+
+# GID da aba AUX (abrir planilha → clicar na aba AUX → copiar o número após "gid=" na URL)
+AUX_GID   = '22905422'
+AUX_URL   = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={AUX_GID}' if AUX_GID else ''
+
 INDEX_HTML = r'index.html'
 
-COL_DATA  = 0   # A
-COL_EMP   = 5   # F
-COL_ACAO  = 8   # I
-COL_PROF  = 10  # K  Profissional (Nome do Medico)
-COL_AGEND = 11  # L
-COL_CANC  = 14  # O
-COL_PEND  = 18  # S
+COL_DATA       = 0   # A
+COL_EMP        = 5   # F
+COL_ACAO       = 8   # I
+COL_PROF       = 10  # K  Profissional (Nome do Medico)
+COL_AGEND      = 11  # L
+COL_DATA_AGEND = 12  # M  Data de agendamento
+COL_CANC       = 14  # O
+COL_PEND       = 18  # S
 
 # ═══════════════════════════════════════════════════════════
 # FUNÇÕES
 # ═══════════════════════════════════════════════════════════
+
+def baixar_aux(url):
+    """Baixa a aba AUX e retorna {norm_nome: capacidade_diaria}."""
+    if not url:
+        return {}
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    data = urllib.request.urlopen(req, timeout=40).read().decode('utf-8', errors='replace')
+    rows = list(csv.reader(io.StringIO(data)))
+    aux = {}
+    for r in rows[1:]:
+        if len(r) < 2 or not r[0].strip() or not r[1].strip():
+            continue
+        try:
+            cap = int(str(r[1]).strip().replace(',', '').replace('.', ''))
+        except ValueError:
+            continue
+        aux[norm_prof(r[0].strip())] = cap
+    print(f'  AUX: {len(aux)} medicos com capacidade configurada.')
+    return aux
+
 
 def baixar_csv(url):
     print(f'  Baixando planilha do Google Sheets...')
@@ -84,8 +110,10 @@ def norm_prof(nome):
     return ''.join(c for c in b if not unicodedata.combining(c))
 
 
-def processar(rows):
+def processar(rows, aux_cap=None):
     from collections import Counter
+    if aux_cap is None:
+        aux_cap = {}
     body = rows[1:]
     emp_list, aco_list, prof_list = [], [], []
     emp_idx, aco_idx, prof_idx = {}, {}, {}
@@ -121,29 +149,40 @@ def processar(rows):
         praw = cel(r, COL_PROF)
         prof = canon.get(norm_prof(praw), base_prof(praw)) if praw else ''
         si  = get_idx(prof, prof_list, prof_idx)
-        ag  = 1 if is_sim(cel(r, COL_AGEND)) else 0
-        ca  = 1 if is_sim(cel(r, COL_CANC))  else 0
-        pe  = 1 if is_sim(cel(r, COL_PEND))  else 0
-        data_rows.append([dt, ei, ai, si, ag, ca, pe])
+        ag      = 1 if is_sim(cel(r, COL_AGEND)) else 0
+        ca      = 1 if is_sim(cel(r, COL_CANC))  else 0
+        pe      = 1 if is_sim(cel(r, COL_PEND))  else 0
+        dt_ag   = parse_data(cel(r, COL_DATA_AGEND))
+        data_rows.append([dt, ei, ai, si, ag, ca, pe, dt_ag])
 
     # Dropdowns nao mostram valor vazio
     aco_drop  = [a for a in aco_list if a]
     prof_drop = [p for p in prof_list if p]
+
+    # Montar SAUDE_AUX: [[idx_medico, capacidade_diaria], ...]
+    saude_aux = []
+    for norm_nome, cap in aux_cap.items():
+        for idx, nome in enumerate(prof_list):
+            if norm_prof(nome) == norm_nome:
+                saude_aux.append([idx, cap])
+                break
 
     print(f'  Interacoes (Data preenchida): {total}')
     print(f'  Agendadas (L=Sim): {sum(x[4] for x in data_rows)}')
     print(f'  Canceladas (O=Sim): {sum(x[5] for x in data_rows)}')
     print(f'  Pendentes (S=Sim): {sum(x[6] for x in data_rows)}')
     print(f'  Empresas: {len(emp_list)} | Acoes: {len(aco_drop)} | Medicos: {len(prof_drop)}')
+    print(f'  AUX mapeados no SAUDE_MED: {len(saude_aux)}')
 
-    return emp_list, aco_list, prof_list, data_rows
+    return emp_list, aco_list, prof_list, data_rows, saude_aux
 
 
-def gerar_bloco(emp_list, aco_list, prof_list, data_rows):
+def gerar_bloco(emp_list, aco_list, prof_list, data_rows, saude_aux=None):
     def js_str(lst):
         return '[' + ','.join("'" + str(v).replace('\\', '\\\\').replace("'", "\\'") + "'" for v in lst) + ']'
     def js_rows(rows):
         return '[' + ','.join('[' + ','.join(str(c) for c in r) + ']' for r in rows) + ']'
+    aux_js = js_rows(saude_aux) if saude_aux else '[]'
 
     return (
         '/* SAUDE_DATA_START */\n'
@@ -151,6 +190,7 @@ def gerar_bloco(emp_list, aco_list, prof_list, data_rows):
         f'const SAUDE_ACO={js_str(aco_list)};\n'
         f'const SAUDE_MED={js_str(prof_list)};\n'
         f'const SAUDE_ROWS={js_rows(data_rows)};\n'
+        f'const SAUDE_AUX={aux_js};\n'
         '/* SAUDE_DATA_END */'
     )
 
@@ -185,14 +225,20 @@ def main():
     print('=' * 50)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     try:
-        print('\n[1/3] Lendo Google Sheets...')
+        print('\n[1/4] Lendo Google Sheets (Acompanhamento)...')
         rows = baixar_csv(CSV_URL)
 
-        print('\n[2/3] Processando dados...')
-        emp_list, aco_list, esp_list, data_rows = processar(rows)
+        print('\n[2/4] Lendo aba AUX (capacidade médicos)...')
+        aux_cap = baixar_aux(AUX_URL) if AUX_GID else {}
+        if not AUX_GID:
+            print('  [AVISO] AUX_GID nao configurado — Taxa de Ocupacao ficara zerada.')
+            print('  Abra a planilha, clique na aba AUX e copie o numero apos "gid=" na URL.')
 
-        print('\n[3/3] Atualizando index.html...')
-        bloco = gerar_bloco(emp_list, aco_list, esp_list, data_rows)
+        print('\n[3/4] Processando dados...')
+        emp_list, aco_list, esp_list, data_rows, saude_aux = processar(rows, aux_cap)
+
+        print('\n[4/4] Atualizando index.html...')
+        bloco = gerar_bloco(emp_list, aco_list, esp_list, data_rows, saude_aux)
         atualizar_html(INDEX_HTML, bloco)
         ts = carimbar_atualizacao(INDEX_HTML)
         print(f'  Atualizado em: {ts}')

@@ -34,11 +34,19 @@ PREFIXO     = 'Retorno_RECEPTIVO'
 ABA         = 'BSales2'
 INDEX_HTML  = r'index.html'
 
+# --- Monitoria (IEC) ---
+MONITORIA_PREFIXO = 'Retorno_monitoria_analitico'
+MON_CAMPANHA = 2    # C  CAMPANHA (Telefone vs demais=Digital)
+MON_NOTA     = 13   # N  NOTA  (IEC = notas zeradas / total)
+
 COL_DATA  = 3    # D  Data/Hora de abertura
 COL_CANAL = 4    # E  Origem do caso
-COL_ENT   = 6    # G  Entidade
+COL_ENT   = 23   # X  Entidade2 -> filtro Entidade
 COL_CLASS = 11   # L  Classificacao do Ticket -> IAR
-COL_UNI   = 14   # O  Unidade
+COL_UNI   = 22   # W  Unidade2 -> filtro Unidade
+COL_REG2  = 24   # Y  Regional2 -> filtro Regional
+COL_SEG   = 15   # P  Segmento
+COL_PES   = 16   # Q  Pesquisa
 
 # --- Aba BASE CSAT (satisfacao) ---
 CSAT_ABA   = 'BASE CSAT'
@@ -50,10 +58,11 @@ CSAT_BONS  = {'muito satisfeito', 'satisfeito', 'sim'}   # contam como satisfeit
 REDES_URL = ('https://ddmadvbr-my.sharepoint.com/:x:/g/personal/'
              'fernanda_castro_grupoddm_com_br/'
              'IQCobMqlyAWfT7aBxT5EGURCAaAxahCZQjDD0eCyvVChMv0?download=1')
-REDES_CANAL_LABEL = 'Redes Sociais'   # tudo da aba vira o canal "Redes Sociais"
-RS_ASSUNTO = 4   # E  Assunto
-RS_UNIDADE = 5   # F  Unidade
-RS_DATA    = 7   # H  Resolvido (data)
+RS_ASSUNTO  = 4   # E  Assunto
+RS_UNIDADE  = 5   # F  Unidade
+RS_REGIONAL = 6   # G  Entidade -> filtro Regional
+RS_DATA     = 9   # J  Resolvido (data)
+RS_CANAL    = 10  # K  Observacao -> Canal (Instagram/Facebook/Messenger)
 
 # --- Arquivo "Autonomia e Renda" (SharePoint, separado por abas/meses) ---
 AUTONOMIA_URL = ('https://ddmadvbr-my.sharepoint.com/:x:/g/personal/'
@@ -153,6 +162,39 @@ def parse_any_date(v):
     return 0
 
 
+def ler_iec(pasta):
+    """IEC = notas zeradas / total, separado em Telefone e Digital (resto).
+    Retorna (iec_tel, iec_dig) em % (0 se sem dados)."""
+    tel = [0, 0]   # [zeradas, total]
+    dig = [0, 0]
+    try:
+        cam = encontrar_arquivo(pasta, MONITORIA_PREFIXO)
+        wb = openpyxl.load_workbook(cam, read_only=True, data_only=True)
+        ws = wb[wb.sheetnames[0]]
+        for i, r in enumerate(ws.iter_rows(values_only=True)):
+            if i == 0:
+                continue
+            if not any(c is not None and str(c).strip() for c in r):
+                continue
+            camp = txt(cel(r, MON_CAMPANHA)).lower()
+            alvo = tel if camp == 'telefone receptivo' else dig
+            alvo[1] += 1
+            nota = cel(r, MON_NOTA)
+            try:
+                if nota is not None and float(str(nota).replace(',', '.')) == 0:
+                    alvo[0] += 1
+            except ValueError:
+                pass
+        wb.close()
+        iec_tel = (tel[0] / tel[1] * 100) if tel[1] else 0
+        iec_dig = (dig[0] / dig[1] * 100) if dig[1] else 0
+        print(f'  IEC Telefone: {tel[0]}/{tel[1]} = {iec_tel:.1f}% | Digital: {dig[0]}/{dig[1]} = {iec_dig:.1f}%')
+        return iec_tel, iec_dig
+    except Exception as e:
+        print(f'  [AVISO] IEC (monitoria) nao carregado: {e}')
+        return 0, 0
+
+
 def baixar_sharepoint(url):
     """Baixa o .xlsx do SharePoint (link anonimo) via cookie jar."""
     cj = http.cookiejar.CookieJar()
@@ -190,8 +232,8 @@ def processar(caminho):
         raise ValueError(f'Aba "{ABA}" nao encontrada. Abas: {wb.sheetnames}')
     ws = wb[ABA]
 
-    canal_list, ent_list, uni_list, assunto_list = [], [], [], []
-    canal_idx, ent_idx, uni_idx, assunto_idx = {}, {}, {}, {}
+    canal_list, ent_list, uni_list, assunto_list, reg_list, seg_list, pes_list = [], [], [], [], [], [], []
+    canal_idx, ent_idx, uni_idx, assunto_idx, reg_idx, seg_idx, pes_idx = {}, {}, {}, {}, {}, {}, {}
 
     def get_idx(val, lst, mp):
         v = txt(val)
@@ -216,9 +258,13 @@ def processar(caminho):
         ci = get_idx(cel(r, COL_CANAL), canal_list, canal_idx)
         gi = get_idx(cel(r, COL_ENT),   ent_list,   ent_idx)
         oi = get_idx(cel(r, COL_UNI),   uni_list,   uni_idx)
+        ri = get_idx(cel(r, COL_REG2),  reg_list,   reg_idx)   # Regional (W = Regional2)
         classif = txt(cel(r, COL_CLASS))             # Classificacao do Ticket
         hc = 1 if classif else 0                      # tem classificacao? (IAR)
-        data_rows.append([dt, ci, gi, oi, hc, classif or None])   # classif = assunto do Top 5
+        segi = get_idx(cel(r, COL_SEG), seg_list, seg_idx)
+        pesi = get_idx(cel(r, COL_PES), pes_list, pes_idx)
+        # [dt, canal, entidade, unidade, hc, assunto, regional, src(0=BSales2), segmento, pesquisa]
+        data_rows.append([dt, ci, gi, oi, hc, classif or None, ri, 0, segi, pesi])
 
     # Ano de referencia (a aba do discador nao tem ano na data)
     ref_year = (max_dt // 10000) if max_dt else 2026
@@ -284,23 +330,27 @@ def processar(caminho):
             dt = (c.year * 10000 + c.month * 100 + c.day) if c else 0
             canal_raw = txt(cel(r, CS_CANAL))
             canal = CSAT_CANAL_MAP.get(canal_raw.upper(), canal_raw.title() if canal_raw else '')
-            bons = tot = 0
+            bons = tot = bons_h = 0
             for qi in CS_QCOLS:
                 resp = txt(cel(r, qi))
                 if not resp:
                     continue
                 tot += 1
-                if resp.lower() in CSAT_BONS:
+                bom = resp.lower() in CSAT_BONS
+                if bom:
                     bons += 1
+                if qi == CS_QCOLS[2] and bom:   # coluna H -> CES
+                    bons_h += 1
             if tot == 0 and not canal:
                 continue
-            csat_rows.append([dt, canal, bons, tot])
+            # [dt, canal, bons(D+F+H), total(D+F+H), bons_H]  (CES = bons_H / nº linhas)
+            csat_rows.append([dt, canal, bons, tot, bons_h])
             if canal and canal not in canal_list and canal not in extra_canais:
                 extra_canais.append(canal)
     else:
         print(f'  [AVISO] Aba "{CSAT_ABA}" nao encontrada.')
 
-    # --- Redes Sociais (SharePoint do SAC): vira canal "Redes Sociais" ---
+    # --- Redes Sociais (SharePoint do SAC): canal = Observacao (K); regional = Entidade (G) ---
     n_redes = 0
     try:
         rb = baixar_sharepoint(REDES_URL)
@@ -308,7 +358,6 @@ def processar(caminho):
         aba_r = next((s for s in wbr.sheetnames if 'edes' in s.lower()), None)
         if aba_r:
             wsr = wbr[aba_r]
-            ci_redes = get_idx(REDES_CANAL_LABEL, canal_list, canal_idx)
             gi_vazio = get_idx('', ent_list, ent_idx)
             for i, r in enumerate(wsr.iter_rows(values_only=True)):
                 if i == 0:
@@ -317,9 +366,11 @@ def processar(caminho):
                     continue
                 c = to_dt(cel(r, RS_DATA))
                 dt = (c.year * 10000 + c.month * 100 + c.day) if c else 0
+                ci_rs = get_idx(cel(r, RS_CANAL), canal_list, canal_idx)      # Observacao -> Canal
+                ri_rs = get_idx(cel(r, RS_REGIONAL), reg_list, reg_idx)        # Entidade(G) -> Regional
                 oi = get_idx(cel(r, RS_UNIDADE), uni_list, uni_idx)
                 araw = txt(cel(r, RS_ASSUNTO))
-                data_rows.append([dt, ci_redes, gi_vazio, oi, 0, araw or None])
+                data_rows.append([dt, ci_rs, gi_vazio, oi, 0, araw or None, ri_rs, 1, -1, -1])
                 n_redes += 1
         else:
             print('  [AVISO] Aba "Redes Sociais" nao encontrada no SharePoint.')
@@ -335,6 +386,7 @@ def processar(caminho):
         ci_aut = get_idx(AUTONOMIA_CANAL_LABEL, canal_list, canal_idx)
         gi_vazio = get_idx('', ent_list, ent_idx)
         oi_vazio = get_idx('', uni_list, uni_idx)
+        ri_vazio = get_idx('', reg_list, reg_idx)   # Autonomia: sem regional
         for aba in wba.sheetnames:
             ws = wba[aba]
             hdr_i = None
@@ -357,7 +409,7 @@ def processar(caminho):
                     continue  # so conta linha com Data Inicial
                 dt = parse_any_date(dval)
                 catv = txt(r[cat]) if (cat is not None and len(r) > cat) else ''
-                data_rows.append([dt, ci_aut, gi_vazio, oi_vazio, 0, catv or None])
+                data_rows.append([dt, ci_aut, gi_vazio, oi_vazio, 0, catv or None, ri_vazio, 2, -1, -1])
                 n_aut += 1
         wba.close()
     except Exception as e:
@@ -395,11 +447,13 @@ def processar(caminho):
     tma = (s_tma / c_tma) if c_tma else 0
     tme = (s_tme / c_tme) if c_tme else 0
     cs_bons = sum(r[2] for r in csat_rows); cs_tot = sum(r[3] for r in csat_rows)
-    bsales_rows = [r for r in data_rows if canal_list[r[1]] != REDES_CANAL_LABEL]
+    bsales_rows = [r for r in data_rows if r[7] == 0]   # src==0 -> BSales2
     iar = (sum(r[4] for r in bsales_rows) / len(bsales_rows) * 100) if bsales_rows else 0
     csat = (cs_bons / cs_tot * 100) if cs_tot else 0
 
     wb.close()
+
+    iec_tel, iec_dig = ler_iec(PASTA)
 
     print(f'  Total Atendimentos (BSales2): {total}')
     print(f'  Canais: {len(canal_list)} | Entidades: {len(ent_list)} | Unidades: {len(uni_list)}')
@@ -413,21 +467,24 @@ def processar(caminho):
     print(f'  Autonomia e Renda: {n_aut} atendimentos')
     print(f'  Assuntos/Categorias distintos: {len(assunto_list)}')
     print(f'  Total geral (BSales2 + Redes + Autonomia): {len(data_rows)}')
-    return canal_list, ent_list, uni_list, data_rows, disc_rows, disc2_rows, csat_rows, extra_canais, assunto_list
+    print(f'  Regionais: {len([x for x in reg_list if x])}')
+    return (canal_list, ent_list, uni_list, data_rows, disc_rows, disc2_rows,
+            csat_rows, extra_canais, assunto_list, reg_list, iec_tel, iec_dig, seg_list, pes_list)
 
 
 def gerar_bloco(canal_list, ent_list, uni_list, data_rows, disc_rows=None, disc2_rows=None,
-                csat_rows=None, extra_canais=None, assunto_list=None):
+                csat_rows=None, extra_canais=None, assunto_list=None, reg_list=None,
+                iec_tel=0, iec_dig=0, seg_list=None, pes_list=None):
     def js_str(lst):
         return '[' + ','.join("'" + str(v).replace('\\', '\\\\').replace("'", "\\'") + "'" for v in lst) + ']'
     def js_num_rows(rows):
         return '[' + ','.join('[' + ','.join(str(c) for c in r) + ']' for r in rows) + ']'
     def js_csat_rows(rows):
-        # [dt, 'canal', bons, total]
+        # [dt, 'canal', bons(D+F+H), total(D+F+H), bons_H]
         out = []
         for r in (rows or []):
             canal = "'" + str(r[1]).replace('\\', '\\\\').replace("'", "\\'") + "'"
-            out.append(f'[{r[0]},{canal},{r[2]},{r[3]}]')
+            out.append(f'[{r[0]},{canal},{r[2]},{r[3]},{r[4]}]')
         return '[' + ','.join(out) + ']'
 
     return (
@@ -435,12 +492,17 @@ def gerar_bloco(canal_list, ent_list, uni_list, data_rows, disc_rows=None, disc2
         f'const RECEP_CANAL={js_str(canal_list)};\n'
         f'const RECEP_CANAL_EXTRA={js_str(extra_canais or [])};\n'
         f'const RECEP_ENT={js_str(ent_list)};\n'
+        f'const RECEP_REG={js_str(reg_list or [])};\n'
         f'const RECEP_UNI={js_str(uni_list)};\n'
         f'const RECEP_ASSUNTO={js_str(assunto_list or [])};\n'
+        f'const RECEP_SEG={js_str(seg_list or [])};\n'
+        f'const RECEP_PES={js_str(pes_list or [])};\n'
         f'const RECEP_ROWS={js_num_rows(data_rows)};\n'
         f'const DISC_ROWS={js_num_rows(disc_rows or [])};\n'
         f'const DISC2_ROWS={js_num_rows(disc2_rows or [])};\n'
         f'const CSAT_ROWS={js_csat_rows(csat_rows)};\n'
+        f'const IEC_TEL={iec_tel:.4f};\n'
+        f'const IEC_DIG={iec_dig:.4f};\n'
         '/* RECEP_DATA_END */'
     )
 
@@ -475,10 +537,10 @@ def main():
     try:
         print('\n[1/2] Processando dados...')
         caminho = encontrar_arquivo(PASTA, PREFIXO)
-        canal, ent, uni, drows, disc, disc2, csat, extra, assunto = processar(caminho)
+        canal, ent, uni, drows, disc, disc2, csat, extra, assunto, reg, iecT, iecD = processar(caminho)
 
         print('\n[2/2] Atualizando index.html...')
-        bloco = gerar_bloco(canal, ent, uni, drows, disc, disc2, csat, extra, assunto)
+        bloco = gerar_bloco(canal, ent, uni, drows, disc, disc2, csat, extra, assunto, reg, iecT, iecD)
         atualizar_html(INDEX_HTML, bloco)
         ts = carimbar_atualizacao(INDEX_HTML)
         print(f'  Atualizado em: {ts}')

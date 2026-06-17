@@ -17,8 +17,8 @@ if %errorlevel% neq 0 (
 
 echo.
 echo [2/2] Publicando no GitHub...
-git add index.html
-git commit -m "atualiza dados Retomada da Trilha"
+git add -A
+git commit -m "atualiza dados"
 echo.
 echo [2a/2] Puxando commits remotos...
 git pull origin main

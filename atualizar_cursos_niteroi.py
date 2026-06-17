@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Atualizador Dashboard Firjan - Campanha Smart Factory
-Le os arquivos Mailing e Retorno e atualiza automaticamente o index.html
-
-Mailing : empresas (CNPJs distintos, coluna E)
-Retorno : tentativas, status, evolucao diaria
-          aba: chamadas_22-04-2026_165407
-          status: coluna L (STATUS_NEGOCIO); se vazia, usa coluna K (STATUS)
+Atualizador Dashboard Firjan - Campanha Cursos Técnicos Niterói
+Mailing : cada linha = 1 inscrição (sem CNPJ)
+Retorno : arquivo de chamadas (mesmo padrão Smart Factory)
+WhatsApp: Planilha1 com colunas Data/Hora, Contato, Identificador, Status
 """
 
 import openpyxl
@@ -16,21 +13,12 @@ import os
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
-# ═══════════════════════════════════════════════════════════
-# CONFIGURAÇÃO
-# ═══════════════════════════════════════════════════════════
-
-PASTA_SMART   = r'Arquivos\nao_atualizaveis\Ativo_Smart_Factory'
-ABA_RETORNO   = 'chamadas_22-04-2026_165407'
+PASTA_NITEROI = r'Arquivos\nao_atualizaveis\Ativo_Cursos_Técnicos_Unidade_Niterói'
+ABA_RETORNO   = 'chamadas_15-06-2026_104745'
 INDEX_HTML    = r'index.html'
 DEPARA_PATH   = r'Arquivos\bases_apoio\tab_de-para.xlsx'
 
-# Número da empresa — quando aparece em ORIGEM, usar DESTINO
-NOSSO_NUMERO = '2120384382'  # (21) 2038-4382 normalizado
-
-# Decisor e Interessado determinados pelo LABEL do de-para:
-# Decisor    = label não está em LABELS_NAO_DECISOR
-# Interessado = label == 'Interessado'
+NOSSO_NUMERO       = '2120384382'
 LABELS_NAO_DECISOR = {'Telefonia', 'Tentativa', 'Engano', 'Alo'}
 LABEL_INTERESSADO  = 'Interessado'
 
@@ -40,7 +28,7 @@ MES_PT = {1:'Jan',2:'Fev',3:'Mar',4:'Abr',5:'Mai',6:'Jun',
           7:'Jul',8:'Ago',9:'Set',10:'Out',11:'Nov',12:'Dez'}
 
 # ═══════════════════════════════════════════════════════════
-# FUNÇÕES AUXILIARES
+# AUXILIARES
 # ═══════════════════════════════════════════════════════════
 
 def fmt_num(n):
@@ -67,7 +55,7 @@ def ler_depara(caminho):
     mapa = {}
     try:
         wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
-        ws = wb['status'] if 'status' in wb.sheetnames else wb.active  # aba "status"
+        ws = wb['status'] if 'status' in wb.sheetnames else wb.active
         first = True
         for row in ws.iter_rows(values_only=True):
             if first: first = False; continue
@@ -97,63 +85,52 @@ def encontrar_arquivo(pasta, prefixo):
 # LEITURA
 # ═══════════════════════════════════════════════════════════
 
-def calcular_mailing_smart(caminho):
-    """Lê o Mailing Smart Factory: conta CNPJs distintos da coluna E (idx 4)."""
+def calcular_mailing_niteroi(caminho):
+    """Mailing: apenas conta o total de linhas (cada linha = 1 inscrição).
+    Status, tentativas e evolução vêm exclusivamente do Retorno."""
     print(f'  Lendo Mailing: {os.path.basename(caminho)}')
     wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
     ws = wb.active
-    cnpjs = set()
-    tels  = set()
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i == 0: continue  # pula header
-        if row[4]: cnpjs.add(row[4])   # coluna E = CNPJ
-        if row[7]: tels.add(norm_tel(row[7]))  # coluna H = TELEFONE
+    inscricoes = sum(1 for i, _ in enumerate(ws.iter_rows(values_only=True)) if i > 0)
     wb.close()
-    return {'_empresas': len(cnpjs), '_tels_mailing': tels}
+    print(f'    CPFs Inscritos: {inscricoes}')
+    return {
+        '_empresas':   inscricoes,
+        '_inscricoes': inscricoes,
+    }
 
 
-def calcular_retorno_smart(caminho, aba):
-    """Lê o Retorno Smart Factory.
-    Cada linha com DATA = 1 tentativa.
-    Status: col L (STATUS_NEGOCIO); se vazia, usa col K (STATUS).
-    """
+def calcular_retorno_niteroi(caminho, aba):
+    """Retorno: mesmo padrão do Smart Factory."""
     print(f'  Lendo Retorno: {os.path.basename(caminho)} | aba: {aba}')
     wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
     ws = wb[aba]
-    headers = [str(h) if h else '' for h in next(ws.iter_rows(values_only=True))]
+    next(ws.iter_rows(values_only=True))  # pula header
     wb_rows = list(ws.iter_rows(values_only=True, min_row=2))
     wb.close()
 
-    # Índices das colunas-chave
-    data_idx = 0   # col A = DATA
-    orig_idx = 7   # col H = ORIGEM
-    dest_idx = 8   # col I = DESTINO
-    tipo_idx = 9   # col J = TIPO
-    st_idx   = 10  # col K = STATUS
-    sn_idx   = 11  # col L = STATUS_NEGOCIO
+    data_idx = 0   # DATA
+    orig_idx = 7   # ORIGEM
+    dest_idx = 8   # DESTINO
+    st_idx   = 10  # STATUS
+    sn_idx   = 11  # STATUS_NEGOCIO
 
-    total_tent    = 0
+    total_tent     = 0
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
-    evolucao      = {}
-    tel_decisor   = set()
-    tel_interesse = set()
+    evolucao       = {}
+    tel_decisor    = set()
+    tel_interesse  = set()
 
     for row in wb_rows:
         dt = to_datetime(row[data_idx])
-        if not dt:
-            continue  # só conta linha com data
+        if not dt: continue
 
         total_tent += 1
 
-        # Telefone: se ORIGEM for o nosso número → usar DESTINO; senão → ORIGEM
         orig_norm = norm_tel(row[orig_idx])
-        if orig_norm == NOSSO_NUMERO:
-            tel = norm_tel(row[dest_idx])
-        else:
-            tel = orig_norm
+        tel = norm_tel(row[dest_idx]) if orig_norm == NOSSO_NUMERO else orig_norm
 
-        # Status: usa L se preenchido, senão K
         sn_raw = row[sn_idx]
         st_raw = row[st_idx]
         raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
@@ -163,15 +140,12 @@ def calcular_retorno_smart(caminho, aba):
             status_counter[label] += 1
             if raw: raw_por_label[label].add(raw)
 
-        # Decisor = label preenchido e não está em LABELS_NAO_DECISOR
         if label and label not in LABELS_NAO_DECISOR:
             tel_decisor.add(tel)
 
-        # Interessado = label == 'Interessado'
         if label == LABEL_INTERESSADO:
             tel_interesse.add(tel)
 
-        # Evolução diária
         dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
         if dk not in evolucao:
             evolucao[dk] = {'date': dt.date(), 'tent': 0, 'conv': 0}
@@ -189,99 +163,86 @@ def calcular_retorno_smart(caminho, aba):
     }
 
 
-def calcular_wpp_smart(caminho):
-    """Lê o Retorno_Smart_Factory_Whatsapp.xlsx.
-    Aba 'Enviados'  : cada linha (sem header) = 1 mensagem enviada.
-    Aba 'Respostas' : cada linha (sem header) = 1 resposta; col G (idx 6) = tabulação.
-    """
+def calcular_wpp_niteroi(caminho):
+    """WhatsApp: Planilha1 — Status: Erro, Enviado, Entregue, Lido."""
     print(f'  Lendo WhatsApp: {os.path.basename(caminho)}')
     wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
-
-    # --- Enviados ---
-    ws_env = wb['Enviados']
-    enviados = 0
-    for row in ws_env.iter_rows(values_only=True, min_row=2):  # min_row=2 pula cabeçalho
-        if any(c for c in row):
-            enviados += 1
-
-    # --- Respostas e tabulações ---
-    ws_res = wb['Respostas']
-    respostas = 0
-    tab_counter = Counter()
-    for i, row in enumerate(ws_res.iter_rows(values_only=True)):
-        if i == 0: continue  # header
-        if any(c for c in row):
-            respostas += 1
-            tab = row[6]  # coluna G
-            if tab:
-                tab_counter[str(tab).strip()] += 1
-
+    ws = wb.active
+    status_counter = Counter()
+    total = 0
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0: continue
+        total += 1
+        st = row[3]
+        if st: status_counter[str(st).strip()] += 1
     wb.close()
 
-    sem_resp = enviados - respostas
-    taxa     = (respostas / enviados * 100) if enviados > 0 else 0
+    entregues = status_counter.get('Entregue', 0) + status_counter.get('Lido', 0)
+    lidos     = status_counter.get('Lido', 0)
+    enviados  = status_counter.get('Enviado', 0)
+    erros     = status_counter.get('Erro', 0)
+    taxa      = (entregues / total * 100) if total > 0 else 0
 
-    # Tabulações relevantes para o resumo
-    informado = tab_counter.get('Informado', 0)
-    email     = tab_counter.get('Enviar E-mail', 0)
-
-    print(f'    Enviados : {enviados}  |  Respostas: {respostas}  |  Sem Resp: {sem_resp}')
-    print(f'    Taxa     : {taxa:.2f}%  |  Informado: {informado}  |  E-mail: {email}')
+    print(f'    Total: {total}  |  Entregues: {entregues}  |  Lidos: {lidos}  |  Enviado: {enviados}  |  Erro: {erros}')
 
     return {
+        '_wpp_total':     total,
+        '_wpp_entregues': entregues,
+        '_wpp_lidos':     lidos,
         '_wpp_enviados':  enviados,
-        '_wpp_respostas': respostas,
-        '_wpp_sem':       sem_resp,
+        '_wpp_erros':     erros,
         '_wpp_taxa':      taxa,
-        '_wpp_informado': informado,
-        '_wpp_email':     email,
     }
 
 
-def combinar_smart(m, r, w=None):
-    """Combina Mailing + Retorno Smart Factory (+ WhatsApp opcional)."""
-    empresas  = m['_empresas']
-    tent      = r['_tentativas']
-    decisor   = len(r['_tel_decisor'])
-    interesse = len(r['_tel_interesse'])
+def combinar_niteroi(m, r, w=None):
+    """Mailing fornece só a contagem de inscrições.
+    Status, tentativas e evolução vêm exclusivamente do Retorno."""
+    inscricoes = m['_inscricoes']
+    tent       = r['_tentativas']
+    decisor    = len(r['_tel_decisor'])
+    interesse  = len(r['_tel_interesse'])
     taxa  = (interesse / decisor * 100) if decisor > 0 else 0
-    media = tent / empresas if empresas > 0 else 0
+    media = tent / inscricoes if inscricoes > 0 else 0
 
-    dias_ord = sorted(r['_evolucao'].items(), key=lambda x: x[1]['date'] or datetime(9999,12,31).date())
     st_items = r['_statusCounter'].most_common()
     rpl      = r.get('_raw_por_label', {})
     st_tooltips = [', '.join(sorted(rpl.get(s[0], set()))) for s in st_items]
 
-    # WhatsApp
+    dias_ord = sorted(r['_evolucao'].items(), key=lambda x: x[1]['date'] or datetime(9999,12,31).date())
+
     show_wpp  = w is not None
-    wpp_env   = fmt_num(w['_wpp_enviados'])  if w else '-'
-    wpp_resp  = fmt_num(w['_wpp_respostas']) if w else '-'
+    wpp_env   = fmt_num(w['_wpp_total'])     if w else '-'
+    wpp_resp  = fmt_num(w['_wpp_entregues']) if w else '-'
     wpp_taxa  = fmt_pct(w['_wpp_taxa'])      if w else '-'
-    wpp_sem   = fmt_num(w['_wpp_sem'])       if w else '-'
-    wpp_info  = fmt_num(w['_wpp_informado']) if w else '-'
-    wpp_email = fmt_num(w['_wpp_email'])     if w else '-'
-    wpp_pie   = [w['_wpp_respostas'], w['_wpp_sem']] if w else [0, 1]
+    wpp_sem   = fmt_num(w['_wpp_erros'])     if w else '-'
+    wpp_info  = fmt_num(w['_wpp_lidos'])     if w else '-'
+    wpp_email = fmt_num(w['_wpp_enviados'])  if w else '-'
+    wpp_pie   = [w['_wpp_entregues'], w['_wpp_erros']] if w else [0, 1]
 
     return {
-        '_empresas':      empresas,
+        # compatível com somar_campanhas
+        '_empresas':      inscricoes,
+        '_inscricoes':    inscricoes,
         '_tentativas':    tent,
         '_interessados':  interesse,
         '_decisor':       decisor,
         '_statusCounter': r['_statusCounter'],
         '_raw_por_label': rpl,
         '_evolucao':      r['_evolucao'],
-        'empresas':      fmt_num(empresas),
+        # formatados para o dashboard
+        'inscricoes':    fmt_num(inscricoes),
         'tentativas':    fmt_num(tent),
         'interessados':  fmt_num(interesse),
         'conversao':     fmt_pct(taxa),
         'decisor':       fmt_num(decisor),
         'media':         fmt_dec(media),
-        'statusLabels':  [s[0] for s in st_items],
-        'statusData':    [s[1] for s in st_items],
+        'statusLabels':   [s[0] for s in st_items],
+        'statusData':     [s[1] for s in st_items],
         'statusTooltips': st_tooltips,
-        'evoLabels':     [d[0] for d in dias_ord],
-        'tentDia':       [d[1]['tent'] for d in dias_ord],
-        'convDia':       [d[1]['conv'] for d in dias_ord],
+        'evoLabels':      [d[0] for d in dias_ord],
+        'tentDia':        [d[1]['tent'] for d in dias_ord],
+        'convDia':        [d[1]['conv'] for d in dias_ord],
         'showWpp':       show_wpp,
         'wppEnv':        wpp_env,
         'wppResp':       wpp_resp,
@@ -293,49 +254,49 @@ def combinar_smart(m, r, w=None):
     }
 
 
-def calcular_kpis_smart():
-    m = calcular_mailing_smart(encontrar_arquivo(PASTA_SMART, 'Mailing_Smart_Factory'))
-    r = calcular_retorno_smart(encontrar_arquivo(PASTA_SMART, 'Retorno_Ativo_Smart_Factory'), ABA_RETORNO)
+def calcular_kpis_niteroi():
+    m = calcular_mailing_niteroi(encontrar_arquivo(PASTA_NITEROI, 'Mailing_Cursos'))
+    r = calcular_retorno_niteroi(encontrar_arquivo(PASTA_NITEROI, 'Retorno_Ativo_Cursos'), ABA_RETORNO)
     try:
-        w = calcular_wpp_smart(encontrar_arquivo(PASTA_SMART, 'Retorno_Smart_Factory_Whatsapp'))
+        w = calcular_wpp_niteroi(encontrar_arquivo(PASTA_NITEROI, 'Retorno_Whatsapp_Cursos'))
     except FileNotFoundError as e:
         print(f'  [AVISO] WhatsApp nao encontrado — secao sera ocultada. {e}')
         w = None
-    return combinar_smart(m, r, w)
+    return combinar_niteroi(m, r, w)
 
 # ═══════════════════════════════════════════════════════════
 # GERAÇÃO DO BLOCO JS
 # ═══════════════════════════════════════════════════════════
 
-def gerar_bloco_smart(k):
+def gerar_bloco_niteroi(k):
     def js_str(lst): return '[' + ','.join(f"'{str(v).replace(chr(39), chr(92)+chr(39))}'" for v in lst) + ']'
     def js_num(lst): return '[' + ','.join(str(v) for v in lst) + ']'
 
-    show_wpp  = 'true' if k.get('showWpp') else 'false'
-    wpp_pie   = js_num(k.get('wppPie', [0, 1]))
+    show_wpp = 'true' if k.get('showWpp') else 'false'
+    wpp_pie  = js_num(k.get('wppPie', [0, 1]))
 
     periodo = f"{k['evoLabels'][0]} — {k['evoLabels'][-1]}" if k['evoLabels'] else ''
-    return f"""  /* SMART_START */
-  smart: {{
-    label: '— Smart Factory', desc: 'Campanha Smart Factory — dados filtrados', periodo: '{periodo}',
-    empresas: '{k['empresas']}', empresasLabel: '🏢 Empresas na Base',
-    mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa',
+    return f"""  /* NITEROI_START */
+  niteroi: {{
+    label: '— Cursos Técnicos Niterói', desc: 'Campanha Cursos Técnicos Niterói — dados filtrados', periodo: '{periodo}',
+    empresas: '{k['inscricoes']}', empresasLabel: '📋 CPFs Inscritos',
+    mediaLabel: '🔁 Média Tentativas/Inscrição', mediaSub: 'por inscrição',
     tentativas: '{k['tentativas']}', interessados: '{k['interessados']}', conversao: '{k['conversao']}',
-    decisor: '{k['decisor']}', decisorSub: 'Apenas Smart Factory', media: '{k['media']}', trend: '',
+    decisor: '{k['decisor']}', decisorSub: 'Apenas Cursos Técnicos Niterói', media: '{k['media']}', trend: '',
     statusLabels: {js_str(k['statusLabels'])},
     statusData: {js_num(k['statusData'])}, statusColors:null,
     statusTooltips: {js_str(k.get('statusTooltips', ['']*len(k['statusLabels'])))},
     evolucaoLabels: {js_str(k['evoLabels'])},
     tentDia: {js_num(k['tentDia'])}, convDia: {js_num(k['convDia'])},
     showWpp: {show_wpp},
-    wppTitle: 'WhatsApp — Smart Factory',
-    wppDesc: 'Ações massivas exclusivas da campanha Smart Factory',
-    wppKpiLabels: ['📤 Total Enviados','💬 Total Respostas','📊 Taxa de Resposta','🔇 Sem Resposta'],
-    wppListLabels: ['Mensagens Enviadas','Informados','Solicitar E-mail','Sem Resposta'],
-    wppPieLabels: ['Respostas','Sem Resposta'],
+    wppTitle: 'WhatsApp — Cursos Técnicos Niterói',
+    wppDesc: 'Disparos massivos da campanha Cursos Técnicos Niterói',
+    wppKpiLabels: ['📤 Total Disparado','✅ Entregues','📊 Taxa de Entrega','❌ Com Erro'],
+    wppListLabels: ['Total Disparado','Lidos','Enviado','Com Erro'],
+    wppPieLabels: ['Entregues','Com Erro'],
     wppEnv:'{k.get('wppEnv','-')}', wppResp:'{k.get('wppResp','-')}', wppTaxa:'{k.get('wppTaxa','-')}', wppSem:'{k.get('wppSem','-')}', wppInfo:'{k.get('wppInfo','-')}', wppEmail:'{k.get('wppEmail','-')}', wppPie:{wpp_pie}
   }},
-  /* SMART_END */"""
+  /* NITEROI_END */"""
 
 # ═══════════════════════════════════════════════════════════
 # ATUALIZAÇÃO DO INDEX.HTML
@@ -359,7 +320,7 @@ def atualizar_html(index_path, blocos):
 def main():
     print()
     print('=' * 50)
-    print('  ATUALIZADOR — Smart Factory')
+    print('  ATUALIZADOR — Cursos Técnicos Niterói')
     print('=' * 50)
 
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -368,24 +329,18 @@ def main():
         print('\n[0/3] Carregando de-para...')
         STATUS_MAP.update(ler_depara(DEPARA_PATH))
 
-        print('\n[1/3] Calculando KPIs — Smart Factory...')
-        ks = calcular_kpis_smart()
+        print('\n[1/3] Calculando KPIs — Cursos Técnicos Niterói...')
+        kn = calcular_kpis_niteroi()
 
-        print(f'  Empresas na Base  : {ks["empresas"]}')
-        print(f'  Total Tentativas  : {ks["tentativas"]}')
-        print(f'  Interessados      : {ks["interessados"]}')
-        print(f'  Contatos Decisor  : {ks["decisor"]}')
-        print(f'  Taxa Conversao    : {ks["conversao"]}')
-        print(f'  Media Tent/Emp    : {ks["media"]}')
-        print(f'  Status: {dict(zip(ks["statusLabels"][:5], ks["statusData"][:5]))} ...')
-        if ks.get('showWpp'):
-            print(f'  WhatsApp Enviados : {ks["wppEnv"]}')
-            print(f'  WhatsApp Respostas: {ks["wppResp"]}  ({ks["wppTaxa"]})')
-            print(f'  WhatsApp Sem Resp : {ks["wppSem"]}')
-            print(f'  Informados        : {ks["wppInfo"]}  |  E-mail: {ks["wppEmail"]}')
+        print(f'  CPFs Inscritos   : {kn["inscricoes"]}')
+        print(f'  Total Tentativas : {kn["tentativas"]}')
+        print(f'  Interessados     : {kn["interessados"]}')
+        print(f'  Contatos Decisor : {kn["decisor"]}')
+        print(f'  Taxa Conversão   : {kn["conversao"]}')
+        print(f'  Média Tent/Insc  : {kn["media"]}')
 
         print('\n[2/3] Gerando bloco JavaScript...')
-        blocos = {'SMART': gerar_bloco_smart(ks)}
+        blocos = {'NITEROI': gerar_bloco_niteroi(kn)}
 
         print('\n[3/3] Atualizando index.html...')
         atualizar_html(INDEX_HTML, blocos)
@@ -402,5 +357,7 @@ def main():
         import traceback; traceback.print_exc()
 
 if __name__ == '__main__':
+    import sys
     main()
-    input('Pressione ENTER para fechar...')
+    if '--no-pause' not in sys.argv:
+        input('Pressione ENTER para fechar...')

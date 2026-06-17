@@ -50,14 +50,24 @@ pip install openpyxl
 
 ## 📂 Passo 3: Preparar os Arquivos de Dados
 
-### Ativo (Retomada + Smart Factory)
-1. Coloque os arquivos Excel em: `Arquivos\atualizaveis\`
-   - `Mailing_Ativo_*.xlsx`
-   - `Retorno_Ativo_*.xlsx`
+### Ativo (campanhas)
+Os arquivos de cada campanha ficam em subpastas dentro de `Arquivos\nao_atualizaveis\`:
+
+| Campanha | Pasta | Arquivos |
+|----------|-------|----------|
+| Retomada da Trilha | `Ativo_Retomada_da_Trilha\` | `Mailing_*.xlsx`, `Retorno_*.xlsx` |
+| Smart Factory | `Ativo_Smart_Factory\` | `Mailing_*.xlsx`, `Retorno_*.xlsx`, `Whatsapp_*.xlsx` |
+| Cursos Técnicos Niterói | `Ativo_Cursos_Técnicos_Unidade_Niterói\` | `Mailing_*.xlsx`, `Retorno_*.xlsx`, `Whatsapp_*.xlsx` |
+
+> **Niterói:** o Mailing conta apenas inscrições (1 linha = 1 CPF). Não são necessários outros formatos.
 
 ### Receptivo
-1. Coloque em: `Arquivos\atualizaveis\`
-   - `Retorno_RECEPTIVO.xlsx` (com abas: BSales2, BASE DISCADOR 1/2, BASE CSAT)
+Coloque em: `Arquivos\atualizaveis\`
+- `Retorno_RECEPTIVO.xlsx` (com abas: BSales2, BASE DISCADOR 1/2, BASE CSAT)
+
+### URA
+Coloque em: `Arquivos\atualizaveis\`
+- `BASE_URA_*.xlsx`
 
 ### Saúde & SAC
 - ✅ Já vêm da internet (Google Sheets + SharePoint públicos)
@@ -83,11 +93,14 @@ python atualizar_tudo.py
   ATUALIZADOR — Todas as Campanhas
 ==================================================
 
-[0/8] Carregando de-para...
-[1/8] Calculando Retomada da Trilha...
-[2/8] Calculando Smart Factory...
+[0/5] Carregando de-para...
+[1/5] Calculando Retomada da Trilha...
+[2/5] Calculando Smart Factory...
+[3/5] Calculando Cursos Técnicos Niterói...
+[4/5] Calculando Todas as Campanhas (soma)...
+[5/5] Gerando blocos JavaScript...
 ...
-[8/8] Concluido! index.html atualizado.
+  CONCLUIDO! index.html atualizado.
 ```
 
 ⏱️ Demora: ~30–60 segundos (depende da internet)
@@ -162,6 +175,7 @@ Isso remove todos os dados do `index.html` (não apaga nada no disco). Você pod
 | `[AVISO] SAC nao atualizado (offline ou erro)` | Verifique a internet; o SAC usa SharePoint (que precisa de conexão) |
 | Git pede senha a cada `publicar.bat` | Configure: `git config --global credential.helper wincred` |
 | Dashboard não atualiza no navegador | Pressione `Ctrl + F5` pra limpar cache |
+| "LIGAR" aparece no gráfico de status | Verifique `tab_de-para.xlsx` — entradas sem acento precisam constar explicitamente |
 
 ---
 
@@ -171,25 +185,32 @@ Isso remove todos os dados do `index.html` (não apaga nada no disco). Você pod
 dashboard-firjan/
 ├── index.html                    ← Arquivo do dashboard (abra isto!)
 ├── README.md                     ← Documentação completa
+├── ARQUITETURA.md                ← Documentação técnica
 ├── GUIA_INSTALACAO.md            ← Você está aqui
 │
 ├── atualizar_tudo.py             ← Script principal (chama tudo)
-├── atualizar_retomada.py         ← Ativo: Retomada
+├── atualizar_retomada.py         ← Ativo: Retomada da Trilha
 ├── atualizar_smart.py            ← Ativo: Smart Factory
+├── atualizar_cursos_niteroi.py   ← Ativo: Cursos Técnicos Niterói
 ├── atualizar_saude.py            ← Saúde (Google Sheets)
 ├── atualizar_sac.py              ← SAC (SharePoint)
 ├── atualizar_receptivo.py        ← Receptivo (Excel + SharePoint)
+├── atualizar_ura.py              ← URA (Excel local)
 │
 ├── atualizar.bat                 ← Clique 2x pra atualizar
 ├── publicar.bat                  ← Clique 2x pra publicar no GitHub
 ├── limpar.bat                    ← Clique 2x pra limpar dados
 │
 ├── Arquivos/
-│   ├── atualizaveis/             ← Coloque seus Excel aqui
+│   ├── atualizaveis/             ← Coloque Receptivo e URA aqui
 │   │   ├── Retorno_RECEPTIVO.xlsx
-│   │   └── Mailing_Ativo_*.xlsx
-│   └── bases_apoio/
-│       └── tab_de-para.xlsx      ← Mapeamentos (não mexer)
+│   │   └── BASE_URA_*.xlsx
+│   ├── bases_apoio/
+│   │   └── tab_de-para.xlsx      ← Mapeamentos de status (não mexer)
+│   └── nao_atualizaveis/         ← Arquivos fixos por campanha
+│       ├── Ativo_Retomada_da_Trilha/
+│       ├── Ativo_Smart_Factory/
+│       └── Ativo_Cursos_Técnicos_Unidade_Niterói/
 │
 └── erros_sac.txt                 ← Relatório (gerado automaticamente)
 ```
@@ -202,7 +223,7 @@ dashboard-firjan/
 - [ ] Git instalado (verificar: `git --version` no cmd)
 - [ ] Repositório clonado (`git clone ...` ou GitHub Desktop)
 - [ ] openpyxl instalado (`pip install openpyxl`)
-- [ ] Arquivos Excel em `Arquivos\atualizaveis\`
+- [ ] Arquivos Excel nas pastas corretas
 - [ ] Rodei `atualizar.bat` com sucesso
 - [ ] Abri `index.html` no navegador ✅ Dashboard aparece!
 - [ ] (Opcional) Pedi acesso ao GitHub e rodei `publicar.bat`

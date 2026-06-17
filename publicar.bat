@@ -6,7 +6,7 @@ echo   PUBLICANDO DASHBOARD FIRJAN...
 echo ========================================
 echo.
 
-git add index.html
+git add -A
 git commit -m "atualiza dados"
 echo.
 echo [1/2] Puxando commits remotos...

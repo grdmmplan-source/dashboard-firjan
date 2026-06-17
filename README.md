@@ -10,7 +10,7 @@ Dashboard de monitoramento em tempo real das campanhas de atendimento do Grupo F
 
 | Módulo | Descrição | Dados | Filtros |
 |--------|-----------|-------|---------|
-| **Ativo** | Retomada da Trilha + Smart Factory | Excel local | Data, Campanha |
+| **Ativo** | Retomada da Trilha + Smart Factory + Cursos Técnicos Niterói | Excel local | Data, Campanha |
 | **Saúde** | Promoção de Saúde | Google Sheets | Data, Ação, Médico |
 | **SAC** | Serviço de Atendimento ao Cliente | SharePoint | Data, Regional, Entidade, Canal, Tipo, Produto, Assunto |
 | **Receptivo** | Receptivo (telefone, chat, email, redes) | Excel local + SharePoint | Data, Canal, Entidade, Unidade |
@@ -33,7 +33,7 @@ pip install openpyxl
 
 ### 3. **Atualizar dados locais**
 ```bash
-# Atualiza tudo (Retomada, Smart, Saúde, SAC, Receptivo)
+# Atualiza tudo (Retomada, Smart, Niterói, Saúde, SAC, Receptivo)
 atualizar.bat
 
 # Ou versão com auto-publicação no GitHub
@@ -54,23 +54,28 @@ Site atualiza em ~1 minuto em https://grdmmplan-source.github.io/dashboard-firja
 ```
 dashboard-firjan/
 ├── index.html                      # Dashboard (HTML/JS puro)
-├── atualizar_tudo.py              # Orquestrador principal
-├── atualizar_retomada.py          # Ativo: Retomada da Trilha
-├── atualizar_smart.py             # Ativo: Smart Factory
-├── atualizar_saude.py             # Saúde (Google Sheets)
-├── atualizar_sac.py               # SAC (SharePoint)
-├── atualizar_receptivo.py         # Receptivo (Excel + SharePoint)
-├── atualizar.bat                  # Batch: rodar atualizar_tudo.py
-├── publicar.bat                   # Batch: git push (publica no GitHub)
-├── limpar.bat                     # Batch: remove todos os dados do HTML
-├── erros_sac.txt                  # Relatório de outliers de SAC
+├── atualizar_tudo.py               # Orquestrador principal
+├── atualizar_retomada.py           # Ativo: Retomada da Trilha
+├── atualizar_smart.py              # Ativo: Smart Factory
+├── atualizar_cursos_niteroi.py     # Ativo: Cursos Técnicos Niterói
+├── atualizar_saude.py              # Saúde (Google Sheets)
+├── atualizar_sac.py                # SAC (SharePoint)
+├── atualizar_receptivo.py          # Receptivo (Excel + SharePoint)
+├── atualizar_ura.py                # URA (Excel local)
+├── atualizar.bat                   # Clique 2x pra atualizar
+├── publicar.bat                    # Clique 2x pra publicar no GitHub
+├── limpar.bat                      # Clique 2x pra limpar dados
+├── erros_sac.txt                   # Relatório de outliers de SAC
 ├── Arquivos/
 │   ├── atualizaveis/
-│   │   ├── Retorno_RECEPTIVO.xlsx         # BSales2, BASE DISCADOR 1/2, BASE CSAT
-│   │   └── Retorno_Ativo_B+P_*            # Retomada da Trilha (Mailing + Retorno)
+│   │   ├── Retorno_RECEPTIVO.xlsx        # BSales2, BASE DISCADOR 1/2, BASE CSAT
+│   │   └── BASE_URA_*.xlsx               # Dados de URA
 │   └── bases_apoio/
-│       └── tab_de-para.xlsx               # Mapeamentos (status, entidade)
-└── README.md                       # Esta documentação
+│       └── tab_de-para.xlsx              # Mapeamentos (status, entidade)
+└── Arquivos/nao_atualizaveis/
+    ├── Ativo_Retomada_da_Trilha/         # Mailing + Retorno Retomada
+    ├── Ativo_Smart_Factory/              # Mailing + Retorno + WPP Smart Factory
+    └── Ativo_Cursos_Técnicos_Unidade_Niterói/  # Mailing + Retorno + WPP Niterói
 ```
 
 ---
@@ -79,46 +84,47 @@ dashboard-firjan/
 
 ```
 atualizar_tudo.py
-  ├→ atualizar_retomada.py   → extrai Retomada da Trilha
-  ├→ atualizar_smart.py      → extrai Smart Factory
-  ├→ atualizar_saude.py      → baixa Google Sheets
-  ├→ atualizar_sac.py        → baixa SharePoint + analisa SAC
-  └→ atualizar_receptivo.py  → lê Excel local + SharePoint (Redes/Autonomia)
+  ├→ atualizar_retomada.py          → extrai Retomada da Trilha
+  ├→ atualizar_smart.py             → extrai Smart Factory
+  ├→ atualizar_cursos_niteroi.py    → extrai Cursos Técnicos Niterói
+  ├→ atualizar_saude.py             → baixa Google Sheets
+  ├→ atualizar_sac.py               → baixa SharePoint + analisa SAC
+  ├→ atualizar_receptivo.py         → lê Excel local + SharePoint (Redes/Autonomia)
+  └→ atualizar_ura.py               → lê Excel local (BASE URA)
         ↓
   Gera blocos JS → injeita em index.html → carimba data/hora
 ```
 
-**Frequência recomendada:** Rodas o script diariamente (ou conforme necessário).
+**Frequência recomendada:** Rodar o script diariamente (ou conforme necessário).
 
 ---
 
 ## 📊 Fontes de Dados
 
-### **Ativo (Retomada + Smart Factory)**
-- **Mailing:** `C:\Users\...\Arquivos\atualizaveis\Mailing_Ativo_*.xlsx`
-- **Retorno:** `C:\Users\...\Arquivos\atualizaveis\Retorno_Ativo_*.xlsx`
-- **Tipo:** Excel local
-- **Atualização:** Manual (copiar arquivo)
+### **Ativo (Retomada + Smart Factory + Cursos Técnicos Niterói)**
+
+| Campanha | Mailing | Retorno | WhatsApp |
+|----------|---------|---------|----------|
+| Retomada da Trilha | `nao_atualizaveis/Ativo_Retomada_da_Trilha/Mailing_*.xlsx` | `Retorno_*.xlsx` | — |
+| Smart Factory | `nao_atualizaveis/Ativo_Smart_Factory/Mailing_*.xlsx` | `Retorno_*.xlsx` | `Whatsapp_*.xlsx` |
+| Cursos Técnicos Niterói | `nao_atualizaveis/Ativo_Cursos_Técnicos_Unidade_Niterói/Mailing_*.xlsx` | `Retorno_*.xlsx` | `Whatsapp_*.xlsx` |
+
+> **Niterói:** o Mailing conta apenas inscrições (1 linha = 1 CPF). O card "Empresas na Base" muda para "CPFs Inscritos" ao filtrar esta campanha.
 
 ### **Saúde**
 - **Fonte:** Google Sheets (anonimamente via CSV export)
-- **URL:** `https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv`
 - **Tipo:** Público (sem credenciais)
 
 ### **SAC**
 - **Fonte:** SharePoint (anonimamente via link público)
-- **Tipo:** Público (sem credenciais)
-- **Dados:**
-  - Data de atendimento / Finalização → Tempo Médio
-  - Satisfação → KPI de satisfação
-  - Regional, Canal, Tipo, Produto, Assunto → Filtros + Rankings
+- **Dados:** Data, Satisfação, Regional, Canal, Tipo, Produto, Assunto
 
 ### **Receptivo**
-- **BSales2:** Excel local (`Retorno_RECEPTIVO.xlsx`)
-- **Discador 1 & 2:** Mesmo arquivo Excel, abas diferentes
-- **BASE CSAT:** Mesmo arquivo Excel
-- **Redes Sociais:** SharePoint (anonimamente)
-- **Autonomia e Renda:** SharePoint (anonimamente)
+- **BSales2 + Discador 1 & 2 + BASE CSAT:** Excel local (`Retorno_RECEPTIVO.xlsx`)
+- **Redes Sociais / Autonomia e Renda:** SharePoint (anonimamente)
+
+### **URA**
+- **Fonte:** Excel local (`BASE_URA_*.xlsx`)
 
 ---
 
@@ -140,46 +146,47 @@ atualizar_tudo.py
 ## 📈 Indicadores Principais por Módulo
 
 ### **Ativo**
-- Tentativas (ligações)
-- Interessados
-- Contatos c/ Decisor
-- Taxa de conversão
-- Gráfico de evolução diária
-- Distribuição por status
+
+| Indicador | Retomada | Smart Factory | Niterói |
+|-----------|----------|---------------|---------|
+| Empresas / Inscrições | 🏢 Empresas na Base | 🏢 Empresas na Base | 📋 CPFs Inscritos |
+| Tentativas | Média por empresa | Média por empresa | Média por inscrição |
+| Interessados | ✅ | ✅ | ✅ |
+| Contato c/ Decisor | ✅ | ✅ | ✅ |
+| Taxa de conversão | ✅ | ✅ | ✅ |
+| Evolução diária | ✅ | ✅ | ✅ |
+| Distribuição por status | ✅ | ✅ | ✅ |
+| WhatsApp | — | Enviados / Respostas | Total Disparado / Entregues / Com Erro |
+| Período trabalhado | ✅ | ✅ | ✅ |
+
+> Ao filtrar "Todas", o card mostra "🏢 Empresas / Inscrições" (soma consolidada).
 
 ### **Saúde**
-- Total de intenções
-- Agendadas
-- Canceladas
-- Pendentes
+- Total de intenções, Agendadas, Canceladas, Pendentes
+- **🏥 Taxa de Ocupação** — agendamentos reais / (dias trabalhados × capacidade diária por médico), baseado na aba AUX da planilha e coluna M (Data de Agendamento)
 - Gráfico: Intenções por empresa
 
 ### **SAC**
-- Total de SACs
-- Satisfeitos / Insatisfeitos
-- Tempo médio de resposta (horas/dias)
+- Total de SACs, Satisfeitos / Insatisfeitos, Tempo médio de resposta
 - Rankings: Unidade, Canal, Produtos
-- Comparativo anual (qtd × TMR por mês)
-- CSAT por linha
-- Distribuição por satisfação
+- Comparativo anual (qtd × TMR por mês), CSAT por linha
 
 ### **Receptivo**
-- Total de atendimentos
-- IAL (Índice de Abandono)
-- ICT (Atendidas em 30s)
-- TMA (Tempo Médio Atendimento)
-- TME (Tempo Médio Espera)
-- IAR (Atendimentos Registrados)
-- CSAT Geral
-- Respostas CSAT
+- Total, IAL, ICT, TMA, TME, IAR, CSAT Geral
 - Top 5 Serviços Mais Procurados
+
+### **Campanha**
+- Total de Atendimentos
+- Gráfico Distribuição: Por Canal | Por Unidade | Por Segmento (col P) | Por Faixa Etária
+- Gráfico "Como os participantes conheceram a Colônia de Férias" (col Q — Pesquisa)
+- Indicadores de Qualidade: TMA, TME, ICT, IAR, IAL, CSAT
 
 ---
 
 ## 🎨 Modos de Visualização
 
 - **Página (padrão):** Layout desktop responsivo
-- **Painel (Kiosk):** Cards grandes para TV/monitor
+- **Painel (Kiosk):** Cards grandes para TV/monitor — inclui abas Ativo, Receptivo, Promoção Saúde, SAC, URA e Campanha
 - **Videowall (2×2):** 4 módulos em grid
 
 ---
@@ -190,6 +197,9 @@ atualizar_tudo.py
 1. Adicione a coluna no `.py` (índice + array)
 2. Atualize `SAC_FILTERS` no JS com `{id, get, col, ph}`
 3. O `refreshSacOptions()` vai automaticamente repopular em cascata
+
+### Adicionar uma nova campanha Ativo
+Ver [ARQUITETURA.md](ARQUITETURA.md) — seção "Adicionar Nova Campanha Ativo".
 
 ### Adicionar um novo módulo (ex: Atendimento)
 1. Crie `atualizar_atendimento.py` seguindo o padrão
@@ -214,6 +224,9 @@ atualizar_tudo.py
 ### "Dashboard não atualiza após rodar o script"
 → Limpe o cache do navegador (Ctrl+F5)
 
+### "LIGAR aparece no gráfico de status"
+→ Verifique se o `calcular_mailing_*()` está só contando linhas, sem ler a coluna Status. Apenas o Retorno alimenta status/tentativas.
+
 ---
 
 ## 📞 Contato & Suporte
@@ -230,4 +243,4 @@ Interno — Grupo DDM
 
 ---
 
-**Última atualização:** 08/06/2026
+**Última atualização:** 17/06/2026
