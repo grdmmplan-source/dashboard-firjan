@@ -60,7 +60,7 @@ REDES_URL = ('https://ddmadvbr-my.sharepoint.com/:x:/g/personal/'
              'IQCobMqlyAWfT7aBxT5EGURCAaAxahCZQjDD0eCyvVChMv0?download=1')
 RS_ASSUNTO  = 4   # E  Assunto
 RS_UNIDADE  = 5   # F  Unidade
-RS_REGIONAL = 6   # G  Entidade -> filtro Regional
+RS_REGIONAL = 7   # H  Regional -> filtro Regional
 RS_DATA     = 9   # J  Resolvido (data)
 RS_CANAL    = 10  # K  Observacao -> Canal (Instagram/Facebook/Messenger)
 
