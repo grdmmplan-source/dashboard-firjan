@@ -46,17 +46,35 @@ ERROS_TXT  = r'erros_sac.txt'
 # e EXCLUIDO do calculo do Tempo Medio (registrado em erros_sac.txt).
 MAX_DELTA_DIAS = 30
 
-COL_PROT  = 0   # A  Protocolo
-COL_DATA  = 2   # C  Data do Atendimento
-COL_CANAL = 4   # E  Canal
-COL_PROD  = 5   # F  Produto/Servico    -> filtro
-COL_UNI   = 7   # H  Unidade            -> Ranking por Unidade
-COL_ENT   = 8   # I  Entidade           -> filtro (coluna direta)
-COL_REG   = 9   # J  Regional           -> filtro
-COL_TIPO  = 10  # K  Tipo de Registro   -> filtro
-COL_FIM   = 13  # N  Data de Finalizacao
-COL_SAT   = 14  # O  Nivel de Satisfacao
-COL_ASSUNTO = 19  # T  Assunto          -> filtro
+# --- Colunas fonte 1: SharePoint ---
+COL_PROT    = 0   # A  Protocolo
+COL_DATA    = 2   # C  Data do Atendimento
+COL_CANAL   = 4   # E  Canal
+COL_PROD    = 5   # F  Produto/Servico
+COL_UNI     = 7   # H  Unidade
+COL_ENT     = 8   # I  Entidade
+COL_REG     = 9   # J  Regional
+COL_TIPO    = 10  # K  Tipo de Registro
+COL_FIM     = 13  # N  Data de Finalizacao
+COL_SAT     = 14  # O  Nivel de Satisfacao
+COL_ASSUNTO = 19  # T  Assunto
+
+# --- Colunas fonte 2: Google Sheets ---
+SAC2_URL = ('https://docs.google.com/spreadsheets/d/'
+            '1z-4hnVB7JRoqTZZ0yVrZ0KONKR3RlualzrrfM3vw9xs/'
+            'export?format=xlsx&gid=1326039238')
+
+C2_PROT    = 0   # A  Protocolo
+C2_DATA    = 2   # C  Data do Atendimento
+C2_CANAL   = 4   # E  Canal
+C2_PROD    = 5   # F  Produto/Servico
+C2_TIPO    = 8   # I  Tipo de Registro
+C2_FIM     = 11  # L  Data de Finalizacao
+C2_SAT     = 12  # M  Nivel de Satisfacao
+C2_ASSUNTO = 17  # R  Assunto
+C2_UNI     = 21  # V  Unidade
+C2_ENT     = 22  # W  Entidade
+C2_REG     = 23  # X  Regional
 
 # ═══════════════════════════════════════════════════════════
 # FUNÇÕES
@@ -74,6 +92,16 @@ def baixar_xlsx(url):
     if 'spreadsheet' not in ctype and 'octet-stream' not in ctype:
         raise RuntimeError(f'Resposta nao e xlsx (Content-Type: {ctype}). '
                            f'O link pode ter mudado de permissao.')
+    print(f'  OK ({len(data):,} bytes)')
+    return data
+
+
+def baixar_gsheets(url):
+    """Baixa o .xlsx exportado do Google Sheets (link publico)."""
+    print('  Baixando planilha SAC complementar do Google Sheets...')
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    resp = urllib.request.urlopen(req, timeout=60)
+    data = resp.read()
     print(f'  OK ({len(data):,} bytes)')
     return data
 
@@ -224,6 +252,86 @@ def processar(xlsx_bytes):
     return canal_list, reg_list, tipo_list, data_rows, erros, outros_labels, extras
 
 
+def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, tipo_idx,
+               ent_list, ent_idx, assunto_list, assunto_idx, prod_list, prod_idx,
+               uni_list, uni_idx):
+    """Processa a fonte 2 (Google Sheets) reaproveitando as listas da fonte 1."""
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True, min_row=2))
+    wb.close()
+
+    def get_idx(val, lst, mp):
+        v = str(val).strip() if val is not None else ''
+        if v not in mp:
+            mp[v] = len(lst)
+            lst.append(v)
+        return mp[v]
+
+    data_rows = []
+    erros = []
+    outros_set = set()
+    total = sat = insat = 0
+    soma_delta = 0
+    n_delta = 0
+    limite_seg = MAX_DELTA_DIAS * 86400
+
+    for i, r in enumerate(rows):
+        linha_excel = i + 2
+        prot = cel(r, C2_PROT)
+        if prot in (None, ''):
+            continue
+        total += 1
+
+        c = to_dt(cel(r, C2_DATA))
+        m = to_dt(cel(r, C2_FIM))
+        dt = (c.year * 10000 + c.month * 100 + c.day) if c else 0
+
+        ci  = get_idx(cel(r, C2_CANAL),   canal_list,   canal_idx)
+        ri  = get_idx(cel(r, C2_REG),     reg_list,     reg_idx)
+        ti  = get_idx(cel(r, C2_TIPO),    tipo_list,    tipo_idx)
+        ei  = get_idx(cel(r, C2_ENT),     ent_list,     ent_idx)
+        ui  = get_idx(cel(r, C2_UNI),     uni_list,     uni_idx)
+        aci = get_idx(cel(r, C2_ASSUNTO), assunto_list, assunto_idx)
+        pi  = get_idx(cel(r, C2_PROD),    prod_list,    prod_idx)
+        sc  = sat_code(cel(r, C2_SAT))
+        if sc == 1:
+            sat += 1
+        elif sc == 2:
+            insat += 1
+        elif sc == 0:
+            raw = cel(r, C2_SAT)
+            outros_set.add('(em branco)' if raw in (None, '') else str(raw).strip())
+
+        dl = None
+        if c and m:
+            d = int((m - c).total_seconds())
+            motivo = None
+            if d < 0:
+                motivo = 'Data de Finalizacao (L) ANTERIOR a Data do Atendimento (C)'
+            elif d > limite_seg:
+                motivo = f'Tempo de resposta acima do limite de {MAX_DELTA_DIAS} dias'
+            if motivo:
+                erros.append({
+                    'linha': linha_excel,
+                    'protocolo': str(prot).strip(),
+                    'atendimento': c.strftime('%d/%m/%Y %H:%M'),
+                    'finalizacao': m.strftime('%d/%m/%Y %H:%M'),
+                    'delta_dias': round(d / 86400, 2),
+                    'motivo': motivo,
+                })
+            else:
+                soma_delta += d
+                n_delta += 1
+                dl = d
+
+        data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui])
+
+    print(f'  [Fonte 2] Total: {total} | Satisfeitos: {sat} | Insatisfeitos: {insat} | Outliers: {len(erros)}')
+    return data_rows, erros
+
+
 def gerar_bloco(canal_list, reg_list, tipo_list, data_rows, outros_labels=None, extras=None):
     def js_str(lst):
         return '[' + ','.join("'" + str(v).replace('\\', '\\\\').replace("'", "\\'") + "'" for v in lst) + ']'
@@ -318,14 +426,35 @@ def main():
     print('=' * 50)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     try:
-        print('\n[1/3] Baixando SharePoint...')
-        xlsx = baixar_xlsx(SAC_URL)
+        print('\n[1/4] Baixando SharePoint (fonte 1)...')
+        xlsx1 = baixar_xlsx(SAC_URL)
 
-        print('\n[2/3] Processando dados...')
-        canal, reg, tipo, drows, erros, outros, extras = processar(xlsx)
+        print('\n[2/4] Processando fonte 1...')
+        canal, reg, tipo, drows, erros, outros, extras = processar(xlsx1)
+
+        print('\n[3/4] Baixando Google Sheets (fonte 2)...')
+        try:
+            xlsx2 = baixar_gsheets(SAC2_URL)
+            mk = lambda lst: {v: i for i, v in enumerate(lst)}
+            drows2, erros2 = processar2(
+                xlsx2,
+                canal,             mk(canal),
+                reg,               mk(reg),
+                tipo,              mk(tipo),
+                extras['ent'],     mk(extras['ent']),
+                extras['assunto'], mk(extras['assunto']),
+                extras['prod'],    mk(extras['prod']),
+                extras['uni'],     mk(extras['uni']),
+            )
+            drows += drows2
+            erros += erros2
+            print(f'  Total combinado: {len(drows)} registros')
+        except Exception as e2:
+            print(f'  [AVISO] Fonte 2 falhou ({e2}). Continuando apenas com fonte 1.')
+
         escrever_erros(ERROS_TXT, erros, len(drows))
 
-        print('\n[3/3] Atualizando index.html...')
+        print('\n[4/4] Atualizando index.html...')
         bloco = gerar_bloco(canal, reg, tipo, drows, outros, extras)
         atualizar_html(INDEX_HTML, bloco)
         ts = carimbar_atualizacao(INDEX_HTML)
