@@ -157,14 +157,25 @@ def sat_code(v):
     return 0
 
 
+def fmt_raw(v):
+    if v is None:
+        return ''
+    if isinstance(v, datetime):
+        return v.strftime('%d/%m/%Y %H:%M') if (v.hour or v.minute) else v.strftime('%d/%m/%Y')
+    return str(v).strip()
+
+
 def processar(xlsx_bytes):
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
     if ABA_SAC not in wb.sheetnames:
         raise ValueError(f'Aba "{ABA_SAC}" nao encontrada. Abas: {wb.sheetnames}')
     ws = wb[ABA_SAC]
-    rows = list(ws.iter_rows(values_only=True, min_row=2))
+    all_rows = list(ws.iter_rows(values_only=True))
     wb.close()
+    headers1 = [fmt_raw(v) for v in all_rows[0]] if all_rows else []
+    rows = all_rows[1:]
+    raw_rows1 = []
 
     canal_list, reg_list, tipo_list = [], [], []
     canal_idx, reg_idx, tipo_idx = {}, {}, {}
@@ -236,6 +247,7 @@ def processar(xlsx_bytes):
                 dl = d
 
         data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui])
+        raw_rows1.append([fmt_raw(v) for v in r])
 
     tmr = (soma_delta / n_delta) if n_delta else 0
     print(f'  Total de SACs        : {total}')
@@ -249,7 +261,7 @@ def processar(xlsx_bytes):
     print(f'  Entidades: {len([e for e in ent_list if e])} | Assuntos: {len([a for a in assunto_list if a])} | Produtos: {len([p for p in prod_list if p])}')
 
     extras = {'ent': ent_list, 'assunto': assunto_list, 'prod': prod_list, 'uni': uni_list}
-    return canal_list, reg_list, tipo_list, data_rows, erros, outros_labels, extras
+    return canal_list, reg_list, tipo_list, data_rows, erros, outros_labels, extras, headers1, raw_rows1
 
 
 def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, tipo_idx,
@@ -259,8 +271,11 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
     ws = wb.active
-    rows = list(ws.iter_rows(values_only=True, min_row=2))
+    all_rows2 = list(ws.iter_rows(values_only=True))
     wb.close()
+    headers2 = [fmt_raw(v) for v in all_rows2[0]] if all_rows2 else []
+    rows = all_rows2[1:]
+    raw_rows2 = []
 
     def get_idx(val, lst, mp):
         v = str(val).strip() if val is not None else ''
@@ -327,12 +342,14 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
                 dl = d
 
         data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui])
+        raw_rows2.append([fmt_raw(v) for v in r])
 
     print(f'  [Fonte 2] Total: {total} | Satisfeitos: {sat} | Insatisfeitos: {insat} | Outliers: {len(erros)}')
-    return data_rows, erros
+    return data_rows, erros, headers2, raw_rows2
 
 
-def gerar_bloco(canal_list, reg_list, tipo_list, data_rows, outros_labels=None, extras=None):
+def gerar_bloco(canal_list, reg_list, tipo_list, data_rows, outros_labels=None, extras=None,
+                headers1=None, raw_rows1=None, headers2=None, raw_rows2=None):
     def js_str(lst):
         return '[' + ','.join("'" + str(v).replace('\\', '\\\\').replace("'", "\\'") + "'" for v in lst) + ']'
     def js_rows(rows):
@@ -341,6 +358,12 @@ def gerar_bloco(canal_list, reg_list, tipo_list, data_rows, outros_labels=None, 
             cells = []
             for c in r:
                 cells.append('null' if c is None else str(c))
+            partes.append('[' + ','.join(cells) + ']')
+        return '[' + ','.join(partes) + ']'
+    def js_raw(rows):
+        partes = []
+        for r in rows:
+            cells = ["'" + str(v).replace('\\', '\\\\').replace('\r', '').replace('\n', ' ').replace("'", "\\'") + "'" for v in r]
             partes.append('[' + ','.join(cells) + ']')
         return '[' + ','.join(partes) + ']'
 
@@ -356,6 +379,10 @@ def gerar_bloco(canal_list, reg_list, tipo_list, data_rows, outros_labels=None, 
         f'const SAC_UNI={js_str(extras.get("uni", []))};\n'
         f'const SAC_OUTROS={js_str(outros_labels or [])};\n'
         f'const SAC_ROWS={js_rows(data_rows)};\n'
+        f'const SAC_HEADERS1={js_str(headers1 or [])};\n'
+        f'const SAC_RAW1={js_raw(raw_rows1 or [])};\n'
+        f'const SAC_HEADERS2={js_str(headers2 or [])};\n'
+        f'const SAC_RAW2={js_raw(raw_rows2 or [])};\n'
         '/* SAC_DATA_END */'
     )
 
@@ -430,13 +457,14 @@ def main():
         xlsx1 = baixar_xlsx(SAC_URL)
 
         print('\n[2/4] Processando fonte 1...')
-        canal, reg, tipo, drows, erros, outros, extras = processar(xlsx1)
+        canal, reg, tipo, drows, erros, outros, extras, h1, raw1 = processar(xlsx1)
 
+        h2, raw2 = [], []
         print('\n[3/4] Baixando Google Sheets (fonte 2)...')
         try:
             xlsx2 = baixar_gsheets(SAC2_URL)
             mk = lambda lst: {v: i for i, v in enumerate(lst)}
-            drows2, erros2 = processar2(
+            drows2, erros2, h2, raw2 = processar2(
                 xlsx2,
                 canal,             mk(canal),
                 reg,               mk(reg),
@@ -455,7 +483,7 @@ def main():
         escrever_erros(ERROS_TXT, erros, len(drows))
 
         print('\n[4/4] Atualizando index.html...')
-        bloco = gerar_bloco(canal, reg, tipo, drows, outros, extras)
+        bloco = gerar_bloco(canal, reg, tipo, drows, outros, extras, h1, raw1, h2, raw2)
         atualizar_html(INDEX_HTML, bloco)
         ts = carimbar_atualizacao(INDEX_HTML)
         print(f'  Atualizado em: {ts}')
