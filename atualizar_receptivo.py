@@ -85,20 +85,15 @@ CSAT_CANAL_MAP = {
 
 # --- Aba BASE DISCADOR 1 (acionamentos do discador) ---
 DISC_ABA      = 'BASE DISCADOR 1'
-DISC_FILA     = '3000'   # so considera a fila 3000 (coluna A)
+DISC_FILAS    = ('3000', '4000')   # filas consideradas (coluna A)
 DC_FILA  = 0     # A  FILA
 DC_DATA  = 1     # B  DATA  (formato "DD/MM HH:MM")
 DC_ATEND = 3     # D  ATEND.
 DC_ABAND = 5     # F  ABAND
 DC_NSREC = 9     # J  N.S. RECEB. (ligacoes atendidas ate 30s) -> ICT
+DC_TMA   = 14   # O  TMADURACAO -> TMA Voz = soma(col O) / soma(ATEND)
+DC_TME   = 11   # L  TMEDURACAO -> TME Voz = soma(col L) / soma(ATEND)
 
-# --- Aba BASE DISCADOR 2 (TMA / TME) ---
-DISC2_ABA   = 'BASE DISCADOR 2'
-DISC2_FILAS = ('3000', '4000')   # filas consideradas (coluna B)
-D2_DATA = 0      # A  DATA
-D2_FILA = 1      # B  FILA
-D2_TMA  = 26     # AA Tempo de Atendimento
-D2_TME  = 27     # AB Tempo de Espera
 
 # ═══════════════════════════════════════════════════════════
 # FUNÇÕES
@@ -213,7 +208,19 @@ def to_seconds(v):
     if isinstance(v, _t):
         return v.hour * 3600 + v.minute * 60 + v.second
     if isinstance(v, (int, float)) and v > 0:
+        # Se o valor for grande (>= 1), provavelmente ja esta em segundos
+        if v >= 1:
+            return float(v)
         return float(v) * 86400  # fracao de dia do Excel
+    if isinstance(v, str):
+        parts = v.strip().split(':')
+        try:
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+            if len(parts) == 2:
+                return int(parts[0]) * 60 + float(parts[1])
+        except (ValueError, IndexError):
+            pass
     return None
 
 
@@ -277,7 +284,7 @@ def processar(caminho):
         for i, r in enumerate(wsd.iter_rows(values_only=True)):
             if i == 0:
                 continue
-            if txt(cel(r, DC_FILA)) != DISC_FILA:
+            if txt(cel(r, DC_FILA)) not in DISC_FILAS:
                 continue
             dt = parse_disc_data(cel(r, DC_DATA), ref_year)
             if not dt:
@@ -285,39 +292,19 @@ def processar(caminho):
             atend = num(cel(r, DC_ATEND))
             aband = num(cel(r, DC_ABAND))
             nsrec = num(cel(r, DC_NSREC))
+            tma_d = to_seconds(cel(r, DC_TMA)) or 0.0
+            tme_d = to_seconds(cel(r, DC_TME)) or 0.0
             if dt not in disc_daily:
-                disc_daily[dt] = [0.0, 0.0, 0.0]
+                disc_daily[dt] = [0.0, 0.0, 0.0, 0.0, 0.0]
             disc_daily[dt][0] += atend
             disc_daily[dt][1] += aband
             disc_daily[dt][2] += nsrec
+            disc_daily[dt][3] += tma_d
+            disc_daily[dt][4] += tme_d
     else:
         print(f'  [AVISO] Aba "{DISC_ABA}" nao encontrada.')
 
-    # --- BASE DISCADOR 2 (fila 3000): TMA e TME, agregados por dia ---
-    disc2_daily = {}
-    if DISC2_ABA in wb.sheetnames:
-        ws2 = wb[DISC2_ABA]
-        for i, r in enumerate(ws2.iter_rows(values_only=True)):
-            if i == 0:
-                continue
-            if not any(txt(cel(r, D2_FILA)).startswith(f) for f in DISC2_FILAS):
-                continue
-            c = to_dt(cel(r, D2_DATA))
-            dt = (c.year * 10000 + c.month * 100 + c.day) if c else 0
-            if not dt:
-                continue
-            saa = to_seconds(cel(r, D2_TMA))
-            sab = to_seconds(cel(r, D2_TME))
-            if dt not in disc2_daily:
-                disc2_daily[dt] = [0.0, 0, 0.0, 0]  # somaTMA, cntTMA, somaTME, cntTME
-            if saa is not None:
-                disc2_daily[dt][0] += saa
-                disc2_daily[dt][1] += 1
-            if sab is not None:
-                disc2_daily[dt][2] += sab
-                disc2_daily[dt][3] += 1
-    else:
-        print(f'  [AVISO] Aba "{DISC2_ABA}" nao encontrada.')
+    disc2_daily = {}  # DISCADOR 2 desconsiderado
 
     # --- BASE CSAT (satisfacao): por linha [dt, canal, bons, total] ---
     csat_rows = []
@@ -435,18 +422,17 @@ def processar(caminho):
         else:
             r[5] = -1
 
-    disc_rows = [[dt, int(v[0]), int(v[1]), int(v[2])] for dt, v in sorted(disc_daily.items())]
-    disc2_rows = [[dt, int(v[0]), v[1], int(v[2]), v[3]] for dt, v in sorted(disc2_daily.items())]
+    disc_rows = [[dt, int(v[0]), int(v[1]), int(v[2]), round(v[3]), round(v[4])] for dt, v in sorted(disc_daily.items())]
     tot_atend = sum(v[1] for v in disc_rows)
     tot_aband = sum(v[2] for v in disc_rows)
     tot_nsrec = sum(v[3] for v in disc_rows)
     tel_bsales = sum(1 for r in data_rows if canal_list[r[1]] == 'Telefone')
     ial = (tot_aband / tot_atend * 100) if tot_atend else 0
     ict = (tot_nsrec / tot_atend * 100) if tot_atend else 0
-    s_tma = sum(v[1] for v in disc2_rows); c_tma = sum(v[2] for v in disc2_rows)
-    s_tme = sum(v[3] for v in disc2_rows); c_tme = sum(v[4] for v in disc2_rows)
-    tma = (s_tma / c_tma) if c_tma else 0
-    tme = (s_tme / c_tme) if c_tme else 0
+    s_tma = sum(v[4] for v in disc_rows)
+    s_tme = sum(v[5] for v in disc_rows)
+    tma = (s_tma / tot_atend) if tot_atend else 0
+    tme = (s_tme / tot_atend) if tot_atend else 0
     cs_bons = sum(r[2] for r in csat_rows); cs_tot = sum(r[3] for r in csat_rows)
     bsales_rows = [r for r in data_rows if r[7] == 0]   # src==0 -> BSales2
     iar = (sum(r[4] for r in bsales_rows) / len(bsales_rows) * 100) if bsales_rows else 0
@@ -458,10 +444,10 @@ def processar(caminho):
 
     print(f'  Total Atendimentos (BSales2): {total}')
     print(f'  Canais: {len(canal_list)} | Entidades: {len(ent_list)} | Unidades: {len(uni_list)}')
-    print(f'  Discador fila {DISC_FILA}: dias={len(disc_rows)} | ATEND={tot_atend} | ABAND={tot_aband}')
+    print(f'  Discador filas {DISC_FILAS}: dias={len(disc_rows)} | ATEND={tot_atend} | ABAND={tot_aband}')
     print(f'  Telefone na BSales2: {tel_bsales} | Diferenca somada: {max(0, tot_atend - tel_bsales)}')
     print(f'  IAL (ABAND/ATEND): {ial:.2f}% | ICT (N.S.RECEB/ATEND): {ict:.2f}%')
-    print(f'  Discador2 filas {DISC2_FILAS}: TMA={tma:.0f}s (n={c_tma}) | TME={tme:.0f}s (n={c_tme})')
+    print(f'  TMA Voz: {tma:.0f}s | TME Voz: {tme:.0f}s (ATEND={tot_atend})')
     print(f'  IAR (com Classificacao/total BSales2): {iar:.2f}%')
     print(f'  CSAT: bons={cs_bons} total={cs_tot} -> {csat:.2f}% | canais extras: {extra_canais}')
     print(f'  Redes Sociais: {n_redes} atendimentos')
@@ -469,11 +455,11 @@ def processar(caminho):
     print(f'  Assuntos/Categorias distintos: {len(assunto_list)}')
     print(f'  Total geral (BSales2 + Redes + Autonomia): {len(data_rows)}')
     print(f'  Regionais: {len([x for x in reg_list if x])}')
-    return (canal_list, ent_list, uni_list, data_rows, disc_rows, disc2_rows,
+    return (canal_list, ent_list, uni_list, data_rows, disc_rows,
             csat_rows, extra_canais, assunto_list, reg_list, iec_tel, iec_dig, seg_list, pes_list)
 
 
-def gerar_bloco(canal_list, ent_list, uni_list, data_rows, disc_rows=None, disc2_rows=None,
+def gerar_bloco(canal_list, ent_list, uni_list, data_rows, disc_rows=None,
                 csat_rows=None, extra_canais=None, assunto_list=None, reg_list=None,
                 iec_tel=0, iec_dig=0, seg_list=None, pes_list=None):
     def js_str(lst):
@@ -500,7 +486,6 @@ def gerar_bloco(canal_list, ent_list, uni_list, data_rows, disc_rows=None, disc2
         f'const RECEP_PES={js_str(pes_list or [])};\n'
         f'const RECEP_ROWS={js_num_rows(data_rows)};\n'
         f'const DISC_ROWS={js_num_rows(disc_rows or [])};\n'
-        f'const DISC2_ROWS={js_num_rows(disc2_rows or [])};\n'
         f'const CSAT_ROWS={js_csat_rows(csat_rows)};\n'
         f'const IEC_TEL=null;\n'
         f'const IEC_DIG=null;\n'
@@ -538,10 +523,10 @@ def main():
     try:
         print('\n[1/2] Processando dados...')
         caminho = encontrar_arquivo(PASTA, PREFIXO)
-        canal, ent, uni, drows, disc, disc2, csat, extra, assunto, reg, iecT, iecD = processar(caminho)
+        canal, ent, uni, drows, disc, csat, extra, assunto, reg, iecT, iecD = processar(caminho)
 
         print('\n[2/2] Atualizando index.html...')
-        bloco = gerar_bloco(canal, ent, uni, drows, disc, disc2, csat, extra, assunto, reg, iecT, iecD)
+        bloco = gerar_bloco(canal, ent, uni, drows, disc, csat, extra, assunto, reg, iecT, iecD)
         atualizar_html(INDEX_HTML, bloco)
         ts = carimbar_atualizacao(INDEX_HTML)
         print(f'  Atualizado em: {ts}')
