@@ -137,14 +137,21 @@ def conf_ajustar_data(dt):
     return nd.year * 10000 + nd.month * 100 + nd.day
 
 
+def conf_titulo(s):
+    """Cada palavra com a primeira letra maiuscula (ANA CAROLINE -> Ana Caroline)."""
+    return ' '.join(w[:1].upper() + w[1:].lower() for w in str(s).split())
+
+
 def conf_primeiro_nome(nome):
-    """Primeiro nome; se for 'Ana', inclui o segundo nome tambem."""
+    """Primeiro nome; se for 'Ana', inclui o segundo nome tambem. Normaliza para Title Case."""
     parts = str(nome).strip().split()
     if not parts:
         return ''
     if parts[0].lower() == 'ana' and len(parts) > 1:
-        return parts[0] + ' ' + parts[1]
-    return parts[0]
+        sel = parts[0] + ' ' + parts[1]
+    else:
+        sel = parts[0]
+    return conf_titulo(sel)
 
 
 def ler_confirmacoes(caminho, aco_list, aco_idx, prof_list, prof_idx, get_idx):
