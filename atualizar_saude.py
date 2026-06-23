@@ -19,6 +19,9 @@ import csv
 import io
 import re
 import os
+from datetime import datetime, timedelta
+
+import openpyxl
 
 # ═══════════════════════════════════════════════════════════
 # CONFIGURAÇÃO
@@ -33,6 +36,18 @@ AUX_GID   = '22905422'
 AUX_URL   = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={AUX_GID}' if AUX_GID else ''
 
 INDEX_HTML = r'index.html'
+
+# --- Base Confirmacoes (xlsx local) ---
+CONF_PATH = r'Arquivos\atualizaveis\Base Confirmações.xlsx'
+CONF_ABA_ODONTO = 'Odonto-Massagem-Fisio'
+CONF_ABA_SAUDE  = 'Saude'
+# Odonto: A=data encerramento, H=especialidade (acao)
+CONF_OD_DATA = 0   # A
+CONF_OD_ESP  = 7   # H
+# Saude: C=data, G=Prof.Agenda (medico); acao fixa = "Saude Digital"
+CONF_SA_DATA = 2   # C
+CONF_SA_PROF = 6   # G
+CONF_SAUDE_ACAO = 'Saúde Digital'
 
 COL_DATA       = 0   # A
 COL_EMP        = 5   # F
@@ -97,6 +112,88 @@ def cel(row, idx):
     return row[idx].strip() if len(row) > idx else ''
 
 
+def conf_to_dt(v):
+    """Converte celula de data (datetime ou dd/mm/aaaa) em datetime. None se falhar."""
+    if isinstance(v, datetime):
+        return v
+    s = str(v).strip() if v is not None else ''
+    m = re.match(r'(\d{1,2})/(\d{1,2})/(\d{2,4})', s)
+    if m:
+        d, mo, y = m.groups()
+        y = int(y) + (2000 if int(y) < 100 else 0)
+        try:
+            return datetime(y, int(mo), int(d))
+        except ValueError:
+            return None
+    return None
+
+
+def conf_ajustar_data(dt):
+    """Data da confirmacao -> data prevista da consulta.
+    Seg-Qui: +1 dia | Sex: +3 dias | resto: +1 dia. Retorna int yyyymmdd."""
+    wd = dt.weekday()  # Mon=0 ... Sun=6
+    delta = 3 if wd == 4 else 1
+    nd = dt + timedelta(days=delta)
+    return nd.year * 10000 + nd.month * 100 + nd.day
+
+
+def conf_primeiro_nome(nome):
+    """Primeiro nome; se for 'Ana', inclui o segundo nome tambem."""
+    parts = str(nome).strip().split()
+    if not parts:
+        return ''
+    if parts[0].lower() == 'ana' and len(parts) > 1:
+        return parts[0] + ' ' + parts[1]
+    return parts[0]
+
+
+def ler_confirmacoes(caminho, aco_list, aco_idx, prof_list, prof_idx, get_idx):
+    """Le a Base Confirmacoes e retorna conf_rows = [[dt_ajustada, acao_idx, med_idx], ...].
+    acao/medico sao mapeados nas MESMAS listas dos filtros da Saude."""
+    conf_rows = []
+    if not os.path.exists(caminho):
+        print(f'  [AVISO] Base Confirmacoes nao encontrada: {caminho}')
+        return conf_rows
+    wbc = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
+    n_od = n_sa = 0
+    # --- Odonto-Massagem-Fisio: data col A, acao = especialidade col H ---
+    if CONF_ABA_ODONTO in wbc.sheetnames:
+        ws = wbc[CONF_ABA_ODONTO]
+        for i, r in enumerate(ws.iter_rows(values_only=True)):
+            if i == 0:
+                continue
+            dv = conf_to_dt(r[CONF_OD_DATA] if len(r) > CONF_OD_DATA else None)
+            if not dv:
+                continue
+            dt = conf_ajustar_data(dv)
+            esp = str(r[CONF_OD_ESP]).strip() if len(r) > CONF_OD_ESP and r[CONF_OD_ESP] else ''
+            ai = get_idx(esp, aco_list, aco_idx) if esp else -1
+            conf_rows.append([dt, ai, -1])
+            n_od += 1
+    else:
+        print(f'  [AVISO] Aba "{CONF_ABA_ODONTO}" nao encontrada.')
+    # --- Saude: data col C, acao fixa "Saude Digital", medico col G ---
+    if CONF_ABA_SAUDE in wbc.sheetnames:
+        ws = wbc[CONF_ABA_SAUDE]
+        ai_sa = get_idx(CONF_SAUDE_ACAO, aco_list, aco_idx)
+        for i, r in enumerate(ws.iter_rows(values_only=True)):
+            if i == 0:
+                continue
+            dv = conf_to_dt(r[CONF_SA_DATA] if len(r) > CONF_SA_DATA else None)
+            if not dv:
+                continue
+            dt = conf_ajustar_data(dv)
+            med = conf_primeiro_nome(r[CONF_SA_PROF]) if len(r) > CONF_SA_PROF and r[CONF_SA_PROF] else ''
+            si = get_idx(med, prof_list, prof_idx) if med else -1
+            conf_rows.append([dt, ai_sa, si])
+            n_sa += 1
+    else:
+        print(f'  [AVISO] Aba "{CONF_ABA_SAUDE}" nao encontrada.')
+    wbc.close()
+    print(f'  Confirmacoes: Odonto/Massagem/Fisio={n_od} | Saude={n_sa} | Total={len(conf_rows)}')
+    return conf_rows
+
+
 def base_prof(nome):
     """Remove '(odonto)/(saude)/...' do nome do profissional."""
     return re.sub(r'\s*\(.*?\)', '', nome).strip()
@@ -155,6 +252,9 @@ def processar(rows, aux_cap=None):
         dt_ag   = parse_data(cel(r, COL_DATA_AGEND))
         data_rows.append([dt, ei, ai, si, ag, ca, pe, dt_ag])
 
+    # Base Confirmacoes (mapeia acao/medico nas mesmas listas)
+    conf_rows = ler_confirmacoes(CONF_PATH, aco_list, aco_idx, prof_list, prof_idx, get_idx)
+
     # Dropdowns nao mostram valor vazio
     aco_drop  = [a for a in aco_list if a]
     prof_drop = [p for p in prof_list if p]
@@ -174,15 +274,16 @@ def processar(rows, aux_cap=None):
     print(f'  Empresas: {len(emp_list)} | Acoes: {len(aco_drop)} | Medicos: {len(prof_drop)}')
     print(f'  AUX mapeados no SAUDE_MED: {len(saude_aux)}')
 
-    return emp_list, aco_list, prof_list, data_rows, saude_aux
+    return emp_list, aco_list, prof_list, data_rows, saude_aux, conf_rows
 
 
-def gerar_bloco(emp_list, aco_list, prof_list, data_rows, saude_aux=None):
+def gerar_bloco(emp_list, aco_list, prof_list, data_rows, saude_aux=None, conf_rows=None):
     def js_str(lst):
         return '[' + ','.join("'" + str(v).replace('\\', '\\\\').replace("'", "\\'") + "'" for v in lst) + ']'
     def js_rows(rows):
         return '[' + ','.join('[' + ','.join(str(c) for c in r) + ']' for r in rows) + ']'
     aux_js = js_rows(saude_aux) if saude_aux else '[]'
+    conf_js = js_rows(conf_rows) if conf_rows else '[]'
 
     return (
         '/* SAUDE_DATA_START */\n'
@@ -191,6 +292,7 @@ def gerar_bloco(emp_list, aco_list, prof_list, data_rows, saude_aux=None):
         f'const SAUDE_MED={js_str(prof_list)};\n'
         f'const SAUDE_ROWS={js_rows(data_rows)};\n'
         f'const SAUDE_AUX={aux_js};\n'
+        f'const CONF_ROWS={conf_js};\n'
         '/* SAUDE_DATA_END */'
     )
 
@@ -235,10 +337,10 @@ def main():
             print('  Abra a planilha, clique na aba AUX e copie o numero apos "gid=" na URL.')
 
         print('\n[3/4] Processando dados...')
-        emp_list, aco_list, esp_list, data_rows, saude_aux = processar(rows, aux_cap)
+        emp_list, aco_list, esp_list, data_rows, saude_aux, conf_rows = processar(rows, aux_cap)
 
         print('\n[4/4] Atualizando index.html...')
-        bloco = gerar_bloco(emp_list, aco_list, esp_list, data_rows, saude_aux)
+        bloco = gerar_bloco(emp_list, aco_list, esp_list, data_rows, saude_aux, conf_rows)
         atualizar_html(INDEX_HTML, bloco)
         ts = carimbar_atualizacao(INDEX_HTML)
         print(f'  Atualizado em: {ts}')

@@ -52,6 +52,7 @@ COL_PES   = 16   # Q  Pesquisa
 CSAT_ABA   = 'BASE CSAT'
 CS_DATA    = 0           # A  Carimbo de data/hora
 CS_QCOLS   = (3, 5, 7)   # D, F, H  (as 3 perguntas de satisfacao)
+CS_CSAT_COL = 3          # D  -> pergunta usada no CSAT (contem "satisfeito"/"sim")
 CS_CANAL   = 13          # N  CANAL
 CSAT_BONS  = {'muito satisfeito', 'satisfeito', 'sim'}   # contam como satisfeito
 # --- Aba "Redes Sociais" (no arquivo SharePoint do SAC) ---
@@ -319,19 +320,19 @@ def processar(caminho):
             canal_raw = txt(cel(r, CS_CANAL))
             canal = CSAT_CANAL_MAP.get(canal_raw.upper(), canal_raw.title() if canal_raw else '')
             bons = tot = bons_h = 0
-            for qi in CS_QCOLS:
-                resp = txt(cel(r, qi))
-                if not resp:
-                    continue
-                tot += 1
-                bom = resp.lower() in CSAT_BONS
-                if bom:
-                    bons += 1
-                if qi == CS_QCOLS[2] and bom:   # coluna H -> CES
-                    bons_h += 1
+            # CSAT: apenas a pergunta da coluna D; resposta que contem "satisfeito" ou "sim"
+            respD = txt(cel(r, CS_CSAT_COL)).lower()
+            if respD:
+                tot = 1
+                if 'satisfeito' in respD or 'sim' in respD:
+                    bons = 1
+            # CES: coluna H (mantido)
+            respH = txt(cel(r, CS_QCOLS[2])).lower()
+            if respH and respH in CSAT_BONS:
+                bons_h = 1
             if tot == 0 and not canal:
                 continue
-            # [dt, canal, bons(D+F+H), total(D+F+H), bons_H]  (CES = bons_H / nº linhas)
+            # [dt, canal, bons(D), total(linhas com D), bons_H]
             csat_rows.append([dt, canal, bons, tot, bons_h])
             if canal and canal not in canal_list and canal not in extra_canais:
                 extra_canais.append(canal)
@@ -523,10 +524,10 @@ def main():
     try:
         print('\n[1/2] Processando dados...')
         caminho = encontrar_arquivo(PASTA, PREFIXO)
-        canal, ent, uni, drows, disc, csat, extra, assunto, reg, iecT, iecD = processar(caminho)
+        canal, ent, uni, drows, disc, csat, extra, assunto, reg, iecT, iecD, seg, pes = processar(caminho)
 
         print('\n[2/2] Atualizando index.html...')
-        bloco = gerar_bloco(canal, ent, uni, drows, disc, csat, extra, assunto, reg, iecT, iecD)
+        bloco = gerar_bloco(canal, ent, uni, drows, disc, csat, extra, assunto, reg, iecT, iecD, seg, pes)
         atualizar_html(INDEX_HTML, bloco)
         ts = carimbar_atualizacao(INDEX_HTML)
         print(f'  Atualizado em: {ts}')

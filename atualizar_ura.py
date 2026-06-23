@@ -32,12 +32,14 @@ CALL_DATA = 0      # A - DATA
 CALL_TMA = 19      # T - TMA
 CALL_CLASS = 26    # AA - CLASSIFICACAO URA
 CALL_MOTIVO = 28   # AC - Motivo_Tranferencia
+CALL_MOTIVO_AB = 29  # AD - Motivo_Abandono
 
 CLASS_RETIDO = 0
 CLASS_RESOLVIDO = 1
 CLASS_ABANDONO = 2
 CLASS_TRANSFERENCIA = 3
 CLASS_OUTROS = 4
+CLASS_ENCERRAMENTO = 5
 
 
 def encontrar_arquivo(pasta, prefixo):
@@ -96,6 +98,8 @@ def class_code(v):
         return CLASS_RESOLVIDO
     if n == 'abandono':
         return CLASS_ABANDONO
+    if n == 'encerramento automatico':
+        return CLASS_ENCERRAMENTO
     if n:
         return CLASS_OUTROS
     return CLASS_RETIDO
@@ -136,10 +140,17 @@ def motivo_valido(v):
     return t
 
 
-def ler_aba(ws, tipo_idx, col_data, col_class, col_tma=None, col_motivo=None, motivo_idx=None):
+def ler_aba(ws, tipo_idx, col_data, col_class, col_tma=None, col_motivo=None,
+            col_motivo_ab=None, motivo_idx=None):
     rows = []
     total = 0
     motivo_idx = motivo_idx if motivo_idx is not None else {}
+
+    def idx_of(mot):
+        if mot not in motivo_idx:
+            motivo_idx[mot] = len(motivo_idx)
+        return motivo_idx[mot]
+
     for i, r in enumerate(ws.iter_rows(values_only=True)):
         if i == 0:
             continue
@@ -149,12 +160,15 @@ def ler_aba(ws, tipo_idx, col_data, col_class, col_tma=None, col_motivo=None, mo
         cls = class_code(cel(r, col_class))
         tma = to_seconds(cel(r, col_tma)) if col_tma is not None else 0
         mi = -1
+        # Motivo: col AC para Transferencia, col AD para Abandono (Callflex)
         if col_motivo is not None and cls == CLASS_TRANSFERENCIA:
             mot = motivo_valido(cel(r, col_motivo))
             if mot:
-                if mot not in motivo_idx:
-                    motivo_idx[mot] = len(motivo_idx)
-                mi = motivo_idx[mot]
+                mi = idx_of(mot)
+        elif col_motivo_ab is not None and cls == CLASS_ABANDONO:
+            mot = motivo_valido(cel(r, col_motivo_ab))
+            if mot:
+                mi = idx_of(mot)
         rows.append([to_ymd(cel(r, col_data)), tipo_idx, cls, tma, mi])
     return rows, total
 
@@ -168,13 +182,14 @@ def processar(caminho):
 
     motivo_idx = {}
     rows_dig, total_dig = ler_aba(wb[ABA_DIGITAL], 0, DIG_DATA, DIG_CLASS, DIG_TMA)
-    rows_voz, total_voz = ler_aba(wb[ABA_CALLFLEX], 1, CALL_DATA, CALL_CLASS, CALL_TMA, CALL_MOTIVO, motivo_idx)
+    rows_voz, total_voz = ler_aba(wb[ABA_CALLFLEX], 1, CALL_DATA, CALL_CLASS, CALL_TMA,
+                                  CALL_MOTIVO, CALL_MOTIVO_AB, motivo_idx)
     wb.close()
 
     rows = rows_dig + rows_voz
     motivos = [m for m, _ in sorted(motivo_idx.items(), key=lambda kv: kv[1])]
     print(f'  Digital: {total_dig} atendimentos | Voz: {total_voz} atendimentos | Total: {len(rows)}')
-    print(f'  Motivos transferencia humano: {len(motivos)}')
+    print(f'  Motivos (transferencia + abandono): {len(motivos)}')
     return ['Digital', 'Voz'], motivos, rows
 
 
