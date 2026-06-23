@@ -502,8 +502,8 @@ def gerar_bloco(canal_list, ent_list, uni_list, data_rows, disc_rows=None, disc2
         f'const DISC_ROWS={js_num_rows(disc_rows or [])};\n'
         f'const DISC2_ROWS={js_num_rows(disc2_rows or [])};\n'
         f'const CSAT_ROWS={js_csat_rows(csat_rows)};\n'
-        f'const IEC_TEL={iec_tel:.4f};\n'
-        f'const IEC_DIG={iec_dig:.4f};\n'
+        f'const IEC_TEL=null;\n'
+        f'const IEC_DIG=null;\n'
         '/* RECEP_DATA_END */'
     )
 
