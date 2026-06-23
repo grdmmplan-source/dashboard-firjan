@@ -94,7 +94,7 @@ DC_NSREC = 9     # J  N.S. RECEB. (ligacoes atendidas ate 30s) -> ICT
 
 # --- Aba BASE DISCADOR 2 (TMA / TME) ---
 DISC2_ABA   = 'BASE DISCADOR 2'
-DISC2_FILA  = '3000'   # coluna B comeca com "3000" (ex.: "3000 - FirjanHumano")
+DISC2_FILAS = ('3000', '4000')   # filas consideradas (coluna B)
 D2_DATA = 0      # A  DATA
 D2_FILA = 1      # B  FILA
 D2_TMA  = 26     # AA Tempo de Atendimento
@@ -300,7 +300,7 @@ def processar(caminho):
         for i, r in enumerate(ws2.iter_rows(values_only=True)):
             if i == 0:
                 continue
-            if not txt(cel(r, D2_FILA)).startswith(DISC2_FILA):
+            if not any(txt(cel(r, D2_FILA)).startswith(f) for f in DISC2_FILAS):
                 continue
             c = to_dt(cel(r, D2_DATA))
             dt = (c.year * 10000 + c.month * 100 + c.day) if c else 0
@@ -461,7 +461,7 @@ def processar(caminho):
     print(f'  Discador fila {DISC_FILA}: dias={len(disc_rows)} | ATEND={tot_atend} | ABAND={tot_aband}')
     print(f'  Telefone na BSales2: {tel_bsales} | Diferenca somada: {max(0, tot_atend - tel_bsales)}')
     print(f'  IAL (ABAND/ATEND): {ial:.2f}% | ICT (N.S.RECEB/ATEND): {ict:.2f}%')
-    print(f'  Discador2 fila {DISC2_FILA}: TMA={tma:.0f}s (n={c_tma}) | TME={tme:.0f}s (n={c_tme})')
+    print(f'  Discador2 filas {DISC2_FILAS}: TMA={tma:.0f}s (n={c_tma}) | TME={tme:.0f}s (n={c_tme})')
     print(f'  IAR (com Classificacao/total BSales2): {iar:.2f}%')
     print(f'  CSAT: bons={cs_bons} total={cs_tot} -> {csat:.2f}% | canais extras: {extra_canais}')
     print(f'  Redes Sociais: {n_redes} atendimentos')
