@@ -181,8 +181,12 @@ def ler_confirmacoes(caminho, aco_list, aco_idx, prof_list, prof_idx, get_idx):
         print(f'  [AVISO] Aba "{CONF_ABA_ODONTO}" nao encontrada.')
     # --- Saude: data col C, acao fixa "Saude Digital", medico col G ---
     if CONF_ABA_SAUDE in wbc.sheetnames:
+        from collections import Counter
         ws = wbc[CONF_ABA_SAUDE]
         ai_sa = get_idx(CONF_SAUDE_ACAO, aco_list, aco_idx)
+        # 1) coleta as linhas (dt, nome_medico)
+        sa_pre = []
+        formas = {}   # chave sem acento -> Counter de formas exibidas
         for i, r in enumerate(ws.iter_rows(values_only=True)):
             if i == 0:
                 continue
@@ -191,7 +195,18 @@ def ler_confirmacoes(caminho, aco_list, aco_idx, prof_list, prof_idx, get_idx):
                 continue
             dt = conf_ajustar_data(dv)
             med = conf_primeiro_nome(r[CONF_SA_PROF]) if len(r) > CONF_SA_PROF and r[CONF_SA_PROF] else ''
-            si = get_idx(med, prof_list, prof_idx) if med else -1
+            sa_pre.append((dt, med))
+            if med:
+                formas.setdefault(norm_prof(med), Counter())[med] += 1
+        # 2) nome canonico (forma mais frequente) por chave sem acento
+        canon_med = {k: c.most_common(1)[0][0] for k, c in formas.items()}
+        # 3) monta as linhas usando o nome canonico
+        for dt, med in sa_pre:
+            if med:
+                med = canon_med.get(norm_prof(med), med)
+                si = get_idx(med, prof_list, prof_idx)
+            else:
+                si = -1
             conf_rows.append([dt, ai_sa, si])
             n_sa += 1
     else:
@@ -212,6 +227,35 @@ def norm_prof(nome):
     b = base_prof(nome).lower()
     b = unicodedata.normalize('NFKD', b)
     return ''.join(c for c in b if not unicodedata.combining(c))
+
+
+def unificar_medicos(prof_list, data_rows, conf_rows):
+    """Funde medicos iguais (mesmo nome ignorando acento/caixa) entre as duas fontes.
+    Escolhe a forma mais usada (desempate: com acento, depois mais longa).
+    Remapeia os indices em data_rows[3] e conf_rows[2]. Retorna nova prof_list."""
+    def has_accent(s):
+        return any(ord(c) > 127 for c in s)
+    uso = {}
+    for r in data_rows:
+        uso[r[3]] = uso.get(r[3], 0) + 1
+    for r in conf_rows:
+        uso[r[2]] = uso.get(r[2], 0) + 1
+    grupos = {}
+    for idx, nome in enumerate(prof_list):
+        k = norm_prof(nome) if nome else ''
+        grupos.setdefault(k, []).append(idx)
+    new_list, remap = [], {}
+    for k, idxs in grupos.items():
+        best = sorted(idxs, key=lambda i: (uso.get(i, 0), has_accent(prof_list[i]), len(prof_list[i])), reverse=True)[0]
+        novo = len(new_list)
+        new_list.append(prof_list[best])
+        for i in idxs:
+            remap[i] = novo
+    for r in data_rows:
+        r[3] = remap.get(r[3], r[3])
+    for r in conf_rows:
+        r[2] = remap.get(r[2], r[2])
+    return new_list
 
 
 def processar(rows, aux_cap=None):
@@ -261,6 +305,9 @@ def processar(rows, aux_cap=None):
 
     # Base Confirmacoes (mapeia acao/medico nas mesmas listas)
     conf_rows = ler_confirmacoes(CONF_PATH, aco_list, aco_idx, prof_list, prof_idx, get_idx)
+
+    # Unifica medicos iguais entre as duas fontes (acento/caixa)
+    prof_list = unificar_medicos(prof_list, data_rows, conf_rows)
 
     # Dropdowns nao mostram valor vazio
     aco_drop  = [a for a in aco_list if a]
