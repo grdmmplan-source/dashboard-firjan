@@ -96,7 +96,7 @@ def class_code(v):
         return CLASS_TRANSFERENCIA
     if n == 'resolvido na ura':
         return CLASS_RESOLVIDO
-    if n == 'abandono':
+    if n in ('abandono', 'desistencia', 'desistente'):
         return CLASS_ABANDONO
     if n == 'encerramento automatico':
         return CLASS_ENCERRAMENTO
