@@ -63,48 +63,30 @@ def main():
         ar.atualizar_html(ar.INDEX_HTML, blocos)
 
         # 6. Promocao Saude (Google Sheets) — nao quebra se estiver offline
-        print('\n[6/7] Promocao Saude (Google Sheets)...')
+        print('\n[6/9] Promocao Saude (Google Sheets)...')
         try:
-            rows = asa.baixar_csv(asa.CSV_URL)
-            aux_cap = asa.baixar_aux(asa.AUX_URL) if asa.AUX_GID else {}
-            emp, aco, esp, drows, saude_aux = asa.processar(rows, aux_cap)
-            bloco_saude = asa.gerar_bloco(emp, aco, esp, drows, saude_aux)
-            asa.atualizar_html(asa.INDEX_HTML, bloco_saude)
-            print('  Saude atualizada.')
+            asa.main()
         except Exception as e:
             print(f'  [AVISO] Saude nao atualizada (offline ou erro): {e}')
 
-        # 7. SAC (SharePoint) — nao quebra se estiver offline
-        print('\n[7/7] SAC (SharePoint)...')
+        # 7. SAC (SharePoint + Google Sheets) — nao quebra se estiver offline
+        print('\n[7/9] SAC (SharePoint)...')
         try:
-            xlsx = asc.baixar_xlsx(asc.SAC_URL)
-            canal, reg, tipo, srows, erros, outros, extras = asc.processar(xlsx)
-            asc.escrever_erros(asc.ERROS_TXT, erros, len(srows))
-            bloco_sac = asc.gerar_bloco(canal, reg, tipo, srows, outros, extras)
-            asc.atualizar_html(asc.INDEX_HTML, bloco_sac)
-            print('  SAC atualizado.')
+            asc.main()
         except Exception as e:
             print(f'  [AVISO] SAC nao atualizado (offline ou erro): {e}')
 
         # 8. Receptivo (arquivo local em Arquivos\atualizaveis)
-        print('\n[8/8] Receptivo (BSales2)...')
+        print('\n[8/9] Receptivo (BSales2)...')
         try:
-            caminho = arc.encontrar_arquivo(arc.PASTA, arc.PREFIXO)
-            canal, ent, uni, rrows, disc, disc2, csat, extra, assunto, reg, iecT, iecD, seg, pes = arc.processar(caminho)
-            bloco_rec = arc.gerar_bloco(canal, ent, uni, rrows, disc, disc2, csat, extra, assunto, reg, iecT, iecD, seg, pes)
-            arc.atualizar_html(arc.INDEX_HTML, bloco_rec)
-            print('  Receptivo atualizado.')
+            arc.main()
         except Exception as e:
             print(f'  [AVISO] Receptivo nao atualizado: {e}')
 
         # 9. URA (arquivo local em Arquivos\atualizaveis)
         print('\n[9/9] URA (BASE URA)...')
         try:
-            caminho = aura.encontrar_arquivo(aura.PASTA, aura.PREFIXO)
-            tipos, motivos, urows = aura.processar(caminho)
-            bloco_ura = aura.gerar_bloco(tipos, motivos, urows)
-            aura.atualizar_html(aura.INDEX_HTML, bloco_ura)
-            print('  URA atualizada.')
+            aura.main()
         except Exception as e:
             print(f'  [AVISO] URA nao atualizada: {e}')
 

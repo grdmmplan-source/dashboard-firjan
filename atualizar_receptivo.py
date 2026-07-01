@@ -524,7 +524,7 @@ def main():
     try:
         print('\n[1/2] Processando dados...')
         caminho = encontrar_arquivo(PASTA, PREFIXO)
-        canal, ent, uni, drows, disc, csat, extra, assunto, reg, iecT, iecD, seg, pes = processar(caminho)
+        canal, ent, uni, drows, disc, csat, extra, assunto, reg, iecT, iecD, seg, pes = processar(caminho)  # 13 valores
 
         print('\n[2/2] Atualizando index.html...')
         bloco = gerar_bloco(canal, ent, uni, drows, disc, csat, extra, assunto, reg, iecT, iecD, seg, pes)
