@@ -24,6 +24,7 @@ import io
 import urllib.request
 import http.cookiejar
 from datetime import datetime, timedelta
+import atualizar_csat
 
 # ═══════════════════════════════════════════════════════════
 # CONFIGURAÇÃO
@@ -48,13 +49,6 @@ COL_REG2  = 24   # Y  Regional2 -> filtro Regional
 COL_SEG   = 15   # P  Segmento
 COL_PES   = 16   # Q  Pesquisa
 
-# --- Aba BASE CSAT (satisfacao) ---
-CSAT_ABA   = 'BASE CSAT'
-CS_DATA    = 0           # A  Carimbo de data/hora
-CS_QCOLS   = (3, 5, 7)   # D, F, H  (as 3 perguntas de satisfacao)
-CS_CSAT_COL = 3          # D  -> pergunta usada no CSAT (contem "satisfeito"/"sim")
-CS_CANAL   = 13          # N  CANAL
-CSAT_BONS  = {'muito satisfeito', 'satisfeito', 'sim'}   # contam como satisfeito
 # --- Aba "Redes Sociais" (no arquivo SharePoint do SAC) ---
 REDES_URL = ('https://ddmadvbr-my.sharepoint.com/:x:/g/personal/'
              'fernanda_castro_grupoddm_com_br/'
@@ -74,15 +68,6 @@ AUTONOMIA_CANAL_LABEL = 'Autonomia e Renda'
 AUT_HDR_DATA = 'DATA INICIAL'   # coluna de data (achada pelo nome)
 AUT_HDR_CAT  = 'CATEGORIA'      # coluna do grafico Servicos Mais Procurados
 
-# CANAL do CSAT (col N) -> canal do filtro
-CSAT_CANAL_MAP = {
-    'CHAT': 'Chat',
-    'WHATSAPP SAUDE': 'Whatsapp', 'WHATSAPP SAÚDE': 'Whatsapp',
-    'WHATSAPP GERAL': 'Whatsapp',
-    'VOZ': 'Telefone',
-    'E-MAIL': 'E-mail', 'EMAIL': 'E-mail',
-    'REDES SOCIAIS': 'Redes Sociais',
-}
 
 # --- Aba BASE DISCADOR 1 (acionamentos do discador) ---
 DISC_ABA      = 'BASE DISCADOR 1'
@@ -307,37 +292,14 @@ def processar(caminho):
 
     disc2_daily = {}  # DISCADOR 2 desconsiderado
 
-    # --- BASE CSAT (satisfacao): por linha [dt, canal, bons, total] ---
-    csat_rows = []
+    # --- CSAT (satisfacao): consolidado de 6 Google Sheets ---
+    print('  Carregando CSAT de Google Sheets...')
+    csat_rows = atualizar_csat.main()
     extra_canais = []
-    if CSAT_ABA in wb.sheetnames:
-        wsc = wb[CSAT_ABA]
-        for i, r in enumerate(wsc.iter_rows(values_only=True)):
-            if i == 0:
-                continue
-            c = to_dt(cel(r, CS_DATA))
-            dt = (c.year * 10000 + c.month * 100 + c.day) if c else 0
-            canal_raw = txt(cel(r, CS_CANAL))
-            canal = CSAT_CANAL_MAP.get(canal_raw.upper(), canal_raw.title() if canal_raw else '')
-            bons = tot = bons_h = 0
-            # CSAT: apenas a pergunta da coluna D; resposta que contem "satisfeito" ou "sim"
-            respD = txt(cel(r, CS_CSAT_COL)).lower()
-            if respD:
-                tot = 1
-                if 'satisfeito' in respD or 'sim' in respD:
-                    bons = 1
-            # CES: coluna H (mantido)
-            respH = txt(cel(r, CS_QCOLS[2])).lower()
-            if respH and respH in CSAT_BONS:
-                bons_h = 1
-            if tot == 0 and not canal:
-                continue
-            # [dt, canal, bons(D), total(linhas com D), bons_H]
-            csat_rows.append([dt, canal, bons, tot, bons_h])
-            if canal and canal not in canal_list and canal not in extra_canais:
-                extra_canais.append(canal)
-    else:
-        print(f'  [AVISO] Aba "{CSAT_ABA}" nao encontrada.')
+    for row in csat_rows:
+        canal = row[1]  # [dt, canal, bons, tot, bons_ces]
+        if canal and canal not in canal_list and canal not in extra_canais:
+            extra_canais.append(canal)
 
     # --- Redes Sociais (SharePoint do SAC): canal = Observacao (K); regional = Entidade (G) ---
     n_redes = 0
