@@ -20,6 +20,7 @@ CSAT_SOURCES = {
         'data_col': 0,        # A: Carimbo de data/hora
         'csat_col': 4,        # E: pergunta de CSAT
         'ces_col': 8,         # I: CES
+        'canal_label': 'Telefone',   # nome canonico (bate com o canal da BSales2)
     },
     'WHATSAPP': {
         'sheet_id': '11zjE-QUB0CKCt8zK9-ZK3vBBFXQ-JCmR-b4Dh2-B9KA',
@@ -27,6 +28,7 @@ CSAT_SOURCES = {
         'data_col': 0,        # A: Carimbo de data/hora
         'csat_col': 3,        # D: pergunta de CSAT
         'ces_col': 7,         # H: CES
+        'canal_label': 'Whatsapp',
     },
     'WHATSAPP2': {
         'sheet_id': '1RmPiKTXqgtLvcX1-Hy-sCR01G-vFnRoGRd4oCztHt5E',
@@ -34,6 +36,7 @@ CSAT_SOURCES = {
         'data_col': 0,        # A: Carimbo de data/hora
         'csat_col': 4,        # E: pergunta de CSAT
         'ces_col': 8,         # I: CES
+        'canal_label': 'Whatsapp',
     },
     'E-MAIL': {
         'sheet_id': '1JIGluf8a2lE4f2jjHEbzblGnx29vZBVsFn1PF2wk4fk',
@@ -41,6 +44,7 @@ CSAT_SOURCES = {
         'data_col': 0,        # A: Carimbo de data/hora
         'csat_col': 3,        # D: pergunta de CSAT
         'ces_col': 7,         # H: CES
+        'canal_label': 'E-mail',
     },
     'REDES SOCIAIS': {
         'sheet_id': '19mIN_TTzdzdEb-7bjopVsMjFInCa7mhq8K1COUkywR0',
@@ -48,6 +52,10 @@ CSAT_SOURCES = {
         'data_col': 0,        # A: Carimbo de data/hora
         'csat_col': 3,        # D: pergunta de CSAT
         'ces_col': 7,         # H: CES
+        # sem canal_label: nao vira opcao no filtro (o detalhe do canal/rede
+        # social - Instagram/Facebook/Messenger - vem da coluna K da aba
+        # "Redes Sociais" do SharePoint, nao dessa planilha de CSAT)
+        'canal_label': None,
     },
     'CHAT': {
         'sheet_id': '1eoxDEmbrzxk_zK8Y2uVHkHJcwnMlxBUxEYW2Yzi0zxI',
@@ -55,6 +63,7 @@ CSAT_SOURCES = {
         'data_col': 0,        # A: Carimbo de data/hora
         'csat_col': 3,        # D: pergunta de CSAT
         'ces_col': 7,         # H: CES
+        'canal_label': 'Chat',
     },
 }
 
@@ -158,8 +167,13 @@ def processar_canal(canal, config):
             ces_resp = txt(cel(r, config['ces_col']))
             bons_ces = 1 if ces_resp in CSAT_BONS else 0
 
+            # canal_label = nome canonico usado no filtro (bate com BSales2);
+            # se None (ex.: Redes Sociais), mantem a chave crua so para o
+            # total geral, mas nao vira opcao selecionavel no filtro.
+            canal_row = config.get('canal_label') or canal
+
             # [dt, canal, bons_csat, total_csat, bons_ces]
-            csat_rows.append([dt, canal, bons, tot, bons_ces])
+            csat_rows.append([dt, canal_row, bons, tot, bons_ces])
 
         print(f'  {canal}: {len(csat_rows)} linhas lidas')
     except Exception as e:
