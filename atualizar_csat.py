@@ -52,10 +52,10 @@ CSAT_SOURCES = {
         'data_col': 0,        # A: Carimbo de data/hora
         'csat_col': 3,        # D: pergunta de CSAT
         'ces_col': 7,         # H: CES
-        # a planilha nao distingue a rede social; repete a mesma resposta
-        # para os 3 canais (Instagram/Facebook/Messenger) para que apareca
-        # ao filtrar qualquer um deles.
-        'canal_labels': ['Instagram', 'Facebook', 'Messenger'],
+        # sem canal_label: nao vira opcao no filtro (o detalhe do canal/rede
+        # social - Instagram/Facebook/Messenger - vem da coluna K da aba
+        # "Redes Sociais" do SharePoint, nao dessa planilha de CSAT)
+        'canal_label': None,
     },
     'CHAT': {
         'sheet_id': '1eoxDEmbrzxk_zK8Y2uVHkHJcwnMlxBUxEYW2Yzi0zxI',
@@ -167,15 +167,13 @@ def processar_canal(canal, config):
             ces_resp = txt(cel(r, config['ces_col']))
             bons_ces = 1 if ces_resp in CSAT_BONS else 0
 
-            # canal_label = nome canonico usado no filtro (bate com BSales2).
-            # canal_labels (lista) = repete a mesma resposta para varios
-            # canais quando a planilha nao distingue entre eles (Redes Sociais).
-            if 'canal_labels' in config:
-                for canal_row in config['canal_labels']:
-                    csat_rows.append([dt, canal_row, bons, tot, bons_ces])
-            else:
-                canal_row = config.get('canal_label') or canal
-                csat_rows.append([dt, canal_row, bons, tot, bons_ces])
+            # canal_label = nome canonico usado no filtro (bate com BSales2);
+            # se None (ex.: Redes Sociais), mantem a chave crua so para o
+            # total geral, mas nao vira opcao selecionavel no filtro.
+            canal_row = config.get('canal_label') or canal
+
+            # [dt, canal, bons_csat, total_csat, bons_ces]
+            csat_rows.append([dt, canal_row, bons, tot, bons_ces])
 
         print(f'  {canal}: {len(csat_rows)} linhas lidas')
     except Exception as e:

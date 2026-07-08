@@ -298,6 +298,11 @@ def processar(caminho):
     extra_canais = []
     for row in csat_rows:
         canal = row[1]  # [dt, canal, bons, tot, bons_ces]
+        # 'REDES SOCIAIS' (chave crua do CSAT, sem canal_label) nao vira
+        # opcao de filtro: o detalhe (Instagram/Facebook/Messenger) ja vem
+        # da coluna K da aba "Redes Sociais" do SharePoint.
+        if canal == 'REDES SOCIAIS':
+            continue
         if canal and canal not in canal_list and canal not in extra_canais:
             extra_canais.append(canal)
 
