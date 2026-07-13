@@ -25,6 +25,13 @@ ABA_RETORNO   = 'chamadas_22-04-2026_165407'
 INDEX_HTML    = r'index.html'
 DEPARA_PATH   = r'Arquivos\bases_apoio\tab_de-para.xlsx'
 
+# --- Agendamentos Smart Factory (Discagem) ---
+PASTA_AGEND   = r'Arquivos\nao_atualizaveis\Agendamento_Smart_Factory'
+PREFIXO_AGEND = 'Discagem_Smart Factory Agendamentos'
+
+# --- Lista de Agendamentos Smart Factory (agenda propriamente dita) ---
+PREFIXO_AGEND_LISTA = 'Smart Factory Agendamentos'
+
 # Número da empresa — quando aparece em ORIGEM, usar DESTINO
 NOSSO_NUMERO = '2120384382'  # (21) 2038-4382 normalizado
 
@@ -33,6 +40,9 @@ NOSSO_NUMERO = '2120384382'  # (21) 2038-4382 normalizado
 # Interessado = label == 'Interessado'
 LABELS_NAO_DECISOR = {'Telefonia', 'Tentativa', 'Engano', 'Alo'}
 LABEL_INTERESSADO  = 'Interessado'
+
+# Agendamentos: status (raw, nao esta no de-para) que indica agendamento concluido
+LABEL_AGENDADO = 'Agendamento Realizado'
 
 STATUS_MAP = {}
 
@@ -238,8 +248,109 @@ def calcular_wpp_smart(caminho):
     }
 
 
-def combinar_smart(m, r, w=None):
-    """Combina Mailing + Retorno Smart Factory (+ WhatsApp opcional)."""
+def calcular_agendamentos_smart(caminho):
+    """Le o Discagem_Smart Factory Agendamentos.xlsx.
+    Cada linha com DATA (col A) = 1 ligacao de agendamento.
+    Status: col L (STATUS_NEGOCIO); se vazia, usa col K (STATUS).
+    """
+    print(f'  Lendo Agendamentos: {os.path.basename(caminho)}')
+    wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
+    aba = next((s for s in wb.sheetnames if s.startswith('chamadas_')), wb.sheetnames[0])
+    print(f'    aba: {aba}')
+    ws = wb[aba]
+
+    data_idx = 0   # col A = DATA
+    st_idx   = 10  # col K = STATUS
+    sn_idx   = 11  # col L = STATUS_NEGOCIO
+
+    total          = 0
+    status_counter = Counter()
+    raw_por_label  = defaultdict(set)
+    evolucao       = {}
+
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0:
+            continue
+        dt = to_datetime(row[data_idx])
+        if not dt:
+            continue
+        total += 1
+
+        sn_raw = row[sn_idx] if len(row) > sn_idx else None
+        st_raw = row[st_idx] if len(row) > st_idx else None
+        raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
+        label  = normalizar_status(raw) if raw else None
+
+        if label:
+            status_counter[label] += 1
+            if raw: raw_por_label[label].add(raw)
+
+        dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
+        if dk not in evolucao:
+            evolucao[dk] = {'date': dt.date(), 'qtd': 0, 'agendadas': 0}
+        evolucao[dk]['qtd'] += 1
+        if label == LABEL_AGENDADO:
+            evolucao[dk]['agendadas'] += 1
+
+    wb.close()
+
+    dias_ord = sorted(evolucao.items(), key=lambda x: x[1]['date'])
+    st_items = status_counter.most_common()
+    st_tooltips = [', '.join(sorted(raw_por_label.get(s[0], set()))) for s in st_items]
+
+    print(f'  Total Agendamentos: {total}')
+    print(f'  Status: {dict(st_items[:5])} ...')
+
+    return {
+        'agendTotal':          fmt_num(total),
+        'agendStatusLabels':   [s[0] for s in st_items],
+        'agendStatusData':     [s[1] for s in st_items],
+        'agendStatusTooltips': st_tooltips,
+        'agendEvolucaoLabels': [d[0] for d in dias_ord],
+        'agendTentDia':        [d[1]['qtd'] for d in dias_ord],
+        'agendConvDia':        [d[1]['agendadas'] for d in dias_ord],
+    }
+
+
+def calcular_agendamentos_lista(caminho):
+    """Le o Smart Factory Agendamentos.xlsx.
+    Retorna so as linhas com DATA E HORA AGENDAMENTO (col K) preenchida.
+    Colunas: D (idx3) RAZAO SOCIAL, H (idx7) Solucao de Interesse,
+    K (idx10) DATA E HORA AGENDAMENTO.
+    """
+    print(f'  Lendo Lista de Agendamentos: {os.path.basename(caminho)}')
+    wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+
+    razao_idx = 3    # D
+    sol_idx   = 7    # H
+    data_idx  = 10   # K
+
+    linhas = []
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0:
+            continue
+        dt = to_datetime(row[data_idx]) if len(row) > data_idx else None
+        if not dt:
+            continue
+        razao = str(row[razao_idx]).strip() if len(row) > razao_idx and row[razao_idx] else ''
+        sol   = str(row[sol_idx]).strip()   if len(row) > sol_idx   and row[sol_idx]   else ''
+        linhas.append((dt, razao, sol))
+
+    wb.close()
+    linhas.sort(key=lambda x: x[0])
+
+    print(f'  Agendamentos com data marcada: {len(linhas)}')
+
+    return {
+        'agendListaData':  [f"{dt.day:02d}/{MES_PT[dt.month]} {dt.hour:02d}:{dt.minute:02d}" for dt, _, _ in linhas],
+        'agendListaRazao': [razao for _, razao, _ in linhas],
+        'agendListaSol':   [sol for _, _, sol in linhas],
+    }
+
+
+def combinar_smart(m, r, w=None, agend=None, agend_lista=None):
+    """Combina Mailing + Retorno Smart Factory (+ WhatsApp e Agendamentos opcionais)."""
     empresas  = m['_empresas']
     tent      = r['_tentativas']
     decisor   = len(r['_tel_decisor'])
@@ -290,6 +401,17 @@ def combinar_smart(m, r, w=None):
         'wppInfo':       wpp_info,
         'wppEmail':      wpp_email,
         'wppPie':        wpp_pie,
+        'showAgend':          agend is not None,
+        'agendTotal':          agend['agendTotal']          if agend else '-',
+        'agendStatusLabels':   agend['agendStatusLabels']   if agend else [],
+        'agendStatusData':     agend['agendStatusData']     if agend else [],
+        'agendStatusTooltips': agend['agendStatusTooltips'] if agend else [],
+        'agendEvolucaoLabels': agend['agendEvolucaoLabels'] if agend else [],
+        'agendTentDia':        agend['agendTentDia']        if agend else [],
+        'agendConvDia':        agend['agendConvDia']        if agend else [],
+        'agendListaData':      agend_lista['agendListaData']  if agend_lista else [],
+        'agendListaRazao':     agend_lista['agendListaRazao'] if agend_lista else [],
+        'agendListaSol':       agend_lista['agendListaSol']   if agend_lista else [],
     }
 
 
@@ -301,7 +423,17 @@ def calcular_kpis_smart():
     except FileNotFoundError as e:
         print(f'  [AVISO] WhatsApp nao encontrado — secao sera ocultada. {e}')
         w = None
-    return combinar_smart(m, r, w)
+    try:
+        agend = calcular_agendamentos_smart(encontrar_arquivo(PASTA_AGEND, PREFIXO_AGEND))
+    except FileNotFoundError as e:
+        print(f'  [AVISO] Agendamentos nao encontrado — secao sera ocultada. {e}')
+        agend = None
+    try:
+        agend_lista = calcular_agendamentos_lista(encontrar_arquivo(PASTA_AGEND, PREFIXO_AGEND_LISTA))
+    except FileNotFoundError as e:
+        print(f'  [AVISO] Lista de Agendamentos nao encontrada. {e}')
+        agend_lista = None
+    return combinar_smart(m, r, w, agend, agend_lista)
 
 # ═══════════════════════════════════════════════════════════
 # GERAÇÃO DO BLOCO JS
@@ -313,6 +445,7 @@ def gerar_bloco_smart(k):
 
     show_wpp  = 'true' if k.get('showWpp') else 'false'
     wpp_pie   = js_num(k.get('wppPie', [0, 1]))
+    show_agend = 'true' if k.get('showAgend') else 'false'
 
     periodo = f"{k['evoLabels'][0]} — {k['evoLabels'][-1]}" if k['evoLabels'] else ''
     return f"""  /* SMART_START */
@@ -333,7 +466,18 @@ def gerar_bloco_smart(k):
     wppKpiLabels: ['📤 Total Enviados','💬 Total Respostas','📊 Taxa de Resposta','🔇 Sem Resposta'],
     wppListLabels: ['Mensagens Enviadas','Informados','Solicitar E-mail','Sem Resposta'],
     wppPieLabels: ['Respostas','Sem Resposta'],
-    wppEnv:'{k.get('wppEnv','-')}', wppResp:'{k.get('wppResp','-')}', wppTaxa:'{k.get('wppTaxa','-')}', wppSem:'{k.get('wppSem','-')}', wppInfo:'{k.get('wppInfo','-')}', wppEmail:'{k.get('wppEmail','-')}', wppPie:{wpp_pie}
+    wppEnv:'{k.get('wppEnv','-')}', wppResp:'{k.get('wppResp','-')}', wppTaxa:'{k.get('wppTaxa','-')}', wppSem:'{k.get('wppSem','-')}', wppInfo:'{k.get('wppInfo','-')}', wppEmail:'{k.get('wppEmail','-')}', wppPie:{wpp_pie},
+    showAgend: {show_agend},
+    agendTotal: '{k.get('agendTotal','-')}',
+    agendStatusLabels: {js_str(k.get('agendStatusLabels', []))},
+    agendStatusData: {js_num(k.get('agendStatusData', []))},
+    agendStatusTooltips: {js_str(k.get('agendStatusTooltips', []))},
+    agendEvolucaoLabels: {js_str(k.get('agendEvolucaoLabels', []))},
+    agendTentDia: {js_num(k.get('agendTentDia', []))},
+    agendConvDia: {js_num(k.get('agendConvDia', []))},
+    agendListaData: {js_str(k.get('agendListaData', []))},
+    agendListaRazao: {js_str(k.get('agendListaRazao', []))},
+    agendListaSol: {js_str(k.get('agendListaSol', []))}
   }},
   /* SMART_END */"""
 
@@ -383,6 +527,10 @@ def main():
             print(f'  WhatsApp Respostas: {ks["wppResp"]}  ({ks["wppTaxa"]})')
             print(f'  WhatsApp Sem Resp : {ks["wppSem"]}')
             print(f'  Informados        : {ks["wppInfo"]}  |  E-mail: {ks["wppEmail"]}')
+        if ks.get('showAgend'):
+            print(f'  Agendamentos Total: {ks["agendTotal"]}')
+            print(f'  Agend. Status     : {dict(zip(ks["agendStatusLabels"][:5], ks["agendStatusData"][:5]))} ...')
+            print(f'  Lista Agendamentos: {len(ks.get("agendListaData", []))} linhas')
 
         print('\n[2/3] Gerando bloco JavaScript...')
         blocos = {'SMART': gerar_bloco_smart(ks)}
