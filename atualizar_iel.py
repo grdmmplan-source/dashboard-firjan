@@ -1,20 +1,22 @@
 # -*- coding: utf-8 -*-
 """
 Atualizador Dashboard Firjan - Campanha Prospeccao IEL
-Le a base (Google Sheets) e atualiza o bloco 'iel' no index.html.
+Le a base de empresas (Google Sheets) + a base de ligacoes (Discagem) e
+atualiza o bloco 'iel' no index.html.
 
-Por enquanto so ha a base de empresas (ainda sem retorno de ligacoes),
-entao apenas o card "Empresas na Base" tem dado real. Os demais campos
-(tentativas, interessados, status, evolucao) ficam em branco, no mesmo
-layout usado pela campanha Retomada da Trilha, ate a base de ligacoes
-ser disponibilizada.
+Base de empresas -> card "Empresas na Base".
+Base de ligacoes (Discagem) -> Tentativas, Interessados, Decisor,
+Conversao, Media, Distribuicao por Status e Evolucao Diaria.
 """
 
 import csv
+import glob
 import io
 import os
 import re
 import urllib.request
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta
 
 # ═══════════════════════════════════════════════════════════
 # CONFIGURAÇÃO
@@ -23,15 +25,90 @@ import urllib.request
 SHEET_ID   = '10epaIyncKbZO9auh8QWnVm8f9VTCzLCY'
 GID        = '1369157082'
 INDEX_HTML = r'index.html'
+DEPARA_PATH    = r'Arquivos\bases_apoio\tab_de-para.xlsx'
+PASTA_DISCAGEM = r'Arquivos\nao_atualizaveis\Ativo_Prospecção IEL'
+
+STATUS_MAP = {}
+LABELS_NAO_DECISOR = {'Telefonia', 'Tentativa', 'Engano', 'Alo'}
+LABEL_INTERESSADO  = 'Interessado'
+
+MES_PT = {1:'Jan',2:'Fev',3:'Mar',4:'Abr',5:'Mai',6:'Jun',
+          7:'Jul',8:'Ago',9:'Set',10:'Out',11:'Nov',12:'Dez'}
 
 
 # ═══════════════════════════════════════════════════════════
-# FUNÇÕES
+# FUNÇÕES AUXILIARES
 # ═══════════════════════════════════════════════════════════
 
 def fmt_num(n):
     return f"{n:,}".replace(",", ".")
 
+
+def fmt_pct(n):
+    return f"{n:.2f}%".replace(".", ",")
+
+
+def fmt_dec(n):
+    return f"{n:.2f}".replace(".", ",")
+
+
+def norm_tel(t):
+    return re.sub(r'\D', '', str(t)) if t else ''
+
+
+def to_datetime(val):
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val
+    if isinstance(val, (int, float)) and val > 0:
+        try:
+            return datetime(1899, 12, 30) + timedelta(days=float(val))
+        except Exception:
+            return None
+    return None
+
+
+def encontrar_unico_xlsx(pasta):
+    arquivos = [a for a in glob.glob(os.path.join(pasta, '*.xlsx')) if not os.path.basename(a).startswith('~$')]
+    if not arquivos:
+        raise FileNotFoundError(f'[ERRO] Nenhum .xlsx encontrado em {pasta}')
+    return sorted(arquivos)[-1]
+
+
+def ler_depara(caminho):
+    mapa = {}
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
+        ws = wb['status'] if 'status' in wb.sheetnames else wb.active
+        first = True
+        for row in ws.iter_rows(values_only=True):
+            if first:
+                first = False
+                continue
+            if row[0] and row[1]:
+                mapa[str(row[0]).strip()] = str(row[1]).strip()
+        wb.close()
+        print(f'  De-para: {len(mapa)} entradas')
+    except FileNotFoundError:
+        print(f'  [AVISO] De-para nao encontrado: {caminho}')
+    return mapa
+
+
+def normalizar_status(raw):
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    for k, v in STATUS_MAP.items():
+        if s.upper() == k.upper():
+            return v
+    return s
+
+
+# ═══════════════════════════════════════════════════════════
+# BASE DE EMPRESAS (Google Sheets)
+# ═══════════════════════════════════════════════════════════
 
 def baixar_csv(sheet_id, gid=None):
     url = f'https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv'
@@ -42,28 +119,136 @@ def baixar_csv(sheet_id, gid=None):
     return list(csv.reader(io.StringIO(conteudo)))
 
 
-def calcular():
-    print(f'  Baixando base Prospecção IEL (Google Sheets)...')
+def calcular_base():
+    print('  Baixando base de empresas Prospecção IEL (Google Sheets)...')
     linhas = baixar_csv(SHEET_ID, GID)
     dados = linhas[1:]
-
     empresas = sum(1 for r in dados if any(c.strip() for c in r))
-
     print(f'  Empresas na base: {empresas}')
-    return {'empresas': fmt_num(empresas)}
+    return {'empresas': empresas}
 
 
-def gerar_bloco(k):
+# ═══════════════════════════════════════════════════════════
+# BASE DE LIGAÇÕES (Discagem)
+# ═══════════════════════════════════════════════════════════
+
+def calcular_discagem(caminho):
+    """Le o Discagem_Ativo_Prospecção_IEL.xlsx.
+    Cada linha com DATA (col A) = 1 tentativa de ligacao.
+    Status: col L (STATUS_NEGOCIO); se vazia, usa col K (STATUS).
+    """
+    import openpyxl
+    print(f'  Lendo Discagem: {os.path.basename(caminho)}')
+    wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
+    aba = next((s for s in wb.sheetnames if s.startswith('chamadas_')), wb.sheetnames[0])
+    ws = wb[aba]
+
+    data_idx = 0    # A DATA
+    orig_idx = 7    # H ORIGEM
+    dest_idx = 8    # I DESTINO
+    st_idx   = 10   # K STATUS
+    sn_idx   = 11   # L STATUS_NEGOCIO
+
+    total_tent = 0
+    status_counter = Counter()
+    raw_por_label  = defaultdict(set)
+    evolucao = {}
+    tel_decisor   = set()
+    tel_interesse = set()
+
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0:
+            continue
+        dt = to_datetime(row[data_idx])
+        if not dt:
+            continue
+        total_tent += 1
+
+        tel = norm_tel(row[orig_idx]) or norm_tel(row[dest_idx])
+
+        sn_raw = row[sn_idx] if len(row) > sn_idx else None
+        st_raw = row[st_idx] if len(row) > st_idx else None
+        raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
+        label  = normalizar_status(raw) if raw else None
+
+        if label:
+            status_counter[label] += 1
+            if raw:
+                raw_por_label[label].add(raw)
+
+        if label and label not in LABELS_NAO_DECISOR:
+            tel_decisor.add(tel)
+        if label == LABEL_INTERESSADO:
+            tel_interesse.add(tel)
+
+        dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
+        if dk not in evolucao:
+            evolucao[dk] = {'date': dt.date(), 'tent': 0, 'conv': 0}
+        evolucao[dk]['tent'] += 1
+        if label == LABEL_INTERESSADO:
+            evolucao[dk]['conv'] += 1
+
+    wb.close()
+
+    dias_ord = sorted(evolucao.items(), key=lambda x: x[1]['date'])
+    st_items = status_counter.most_common()
+    st_tooltips = [', '.join(sorted(raw_por_label.get(s[0], set()))) for s in st_items]
+
+    print(f'  Total Tentativas: {total_tent}')
+    print(f'  Decisor: {len(tel_decisor)} | Interessados: {len(tel_interesse)}')
+    print(f'  Status: {dict(st_items[:5])} ...')
+
+    return {
+        'tentativas':    total_tent,
+        'decisor':       len(tel_decisor),
+        'interessados':  len(tel_interesse),
+        'statusLabels':  [s[0] for s in st_items],
+        'statusData':    [s[1] for s in st_items],
+        'statusTooltips': st_tooltips,
+        'evoLabels':     [d[0] for d in dias_ord],
+        'tentDia':       [d[1]['tent'] for d in dias_ord],
+        'convDia':       [d[1]['conv'] for d in dias_ord],
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# GERAÇÃO DO BLOCO JS
+# ═══════════════════════════════════════════════════════════
+
+def js_str(lst):
+    return '[' + ','.join(f"'{str(v).replace(chr(39), chr(92)+chr(39))}'" for v in lst) + ']'
+
+
+def js_num(lst):
+    return '[' + ','.join(str(v) for v in lst) + ']'
+
+
+def gerar_bloco(base, disc):
+    empresas = base['empresas']
+    tent     = disc['tentativas']
+    decisor  = disc['decisor']
+    interess = disc['interessados']
+    taxa     = (interess / decisor * 100) if decisor > 0 else 0
+    media    = (tent / empresas) if empresas > 0 else 0
+
+    periodo = f"{disc['evoLabels'][0]} — {disc['evoLabels'][-1]}" if disc['evoLabels'] else ''
+    status_labels = disc['statusLabels'] or ['Sem dados']
+    status_data   = disc['statusData'] or [0]
+    evo_labels    = disc['evoLabels'] or ['--']
+    tent_dia      = disc['tentDia'] or [0]
+    conv_dia      = disc['convDia'] or [0]
+
     return f"""  /* IEL_START */
   iel: {{
-    label: '— Prospecção IEL', desc: 'Campanha Prospecção IEL — dados filtrados', periodo: '',
-    empresas: '{k['empresas']}', empresasLabel: '🏢 Empresas na Base',
+    label: '— Prospecção IEL', desc: 'Campanha Prospecção IEL — dados filtrados', periodo: '{periodo}',
+    empresas: '{fmt_num(empresas)}', empresasLabel: '🏢 Empresas na Base',
     mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa',
-    tentativas: '-', interessados: '-', conversao: '-',
-    decisor: '-', decisorSub: 'Apenas Prospecção IEL', media: '-', trend: '',
-    statusLabels: ['Sem dados'], statusData: [0], statusColors:null,
-    statusTooltips: [],
-    evolucaoLabels: ['--'], tentDia: [0], convDia: [0],
+    tentativas: '{fmt_num(tent)}', interessados: '{fmt_num(interess)}', conversao: '{fmt_pct(taxa)}',
+    decisor: '{fmt_num(decisor)}', decisorSub: 'Apenas Prospecção IEL', media: '{fmt_dec(media)}', trend: '',
+    statusLabels: {js_str(status_labels)}, statusData: {js_num(status_data)}, statusColors:null,
+    statusTooltips: {js_str(disc['statusTooltips'])},
+    evolucaoLabels: {js_str(evo_labels)},
+    tentDia: {js_num(tent_dia)}, convDia: {js_num(conv_dia)},
     showWpp: false,
     wppTitle: '', wppDesc: '',
     wppKpiLabels: [], wppListLabels: [], wppPieLabels: [],
@@ -84,6 +269,10 @@ def atualizar_html(index_path, blocos):
         f.write(conteudo)
 
 
+# ═══════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════
+
 def main():
     print()
     print('=' * 50)
@@ -91,8 +280,10 @@ def main():
     print('=' * 50)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     try:
-        k = calcular()
-        bloco = {'IEL': gerar_bloco(k)}
+        STATUS_MAP.update(ler_depara(DEPARA_PATH))
+        base = calcular_base()
+        disc = calcular_discagem(encontrar_unico_xlsx(PASTA_DISCAGEM))
+        bloco = {'IEL': gerar_bloco(base, disc)}
         atualizar_html(INDEX_HTML, bloco)
         print()
         print('=' * 50)
