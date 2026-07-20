@@ -29,8 +29,7 @@ DEPARA_PATH    = r'Arquivos\bases_apoio\tab_de-para.xlsx'
 PASTA_DISCAGEM = r'Arquivos\nao_atualizaveis\Ativo_Prospecção IEL'
 
 STATUS_MAP = {}
-LABELS_NAO_DECISOR = {'Telefonia', 'Tentativa', 'Engano', 'Alo'}
-LABEL_INTERESSADO  = 'Interessado'
+LABEL_INTERESSADO = 'Interessado'
 
 MES_PT = {1:'Jan',2:'Fev',3:'Mar',4:'Abr',5:'Mai',6:'Jun',
           7:'Jul',8:'Ago',9:'Set',10:'Out',11:'Nov',12:'Dez'}
@@ -106,6 +105,19 @@ def normalizar_status(raw):
     return s
 
 
+def norm_txt(s):
+    """Maiuscula, sem acento - para comparar tabulacoes brutas."""
+    import unicodedata
+    b = unicodedata.normalize('NFKD', str(s).strip().upper())
+    return ''.join(c for c in b if not unicodedata.combining(c))
+
+
+# Tabulacoes brutas (antes do de-para) usadas nos cards especificos da IEL
+TAB_CONTATADAS  = {'INTERESSADO', 'NAO INTERESSADO', 'INFORMACOES POR E-MAIL', 'CLIENTE DESLIGOU'}
+TAB_EFETIVOS    = {'INTERESSADO', 'INFORMACOES POR E-MAIL'}
+TAB_DPMEN       = {'INFORMACOES POR E-MAIL'}
+
+
 # ═══════════════════════════════════════════════════════════
 # BASE DE EMPRESAS (Google Sheets)
 # ═══════════════════════════════════════════════════════════
@@ -144,6 +156,7 @@ def calcular_discagem(caminho):
     ws = wb[aba]
 
     data_idx = 0    # A DATA
+    doc_idx  = 4    # E DOC (CNPJ)
     orig_idx = 7    # H ORIGEM
     dest_idx = 8    # I DESTINO
     st_idx   = 10   # K STATUS
@@ -153,8 +166,10 @@ def calcular_discagem(caminho):
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
     evolucao = {}
-    tel_decisor   = set()
-    tel_interesse = set()
+    tel_interesse    = set()
+    emp_contatadas   = set()  # empresas: INTERESSADO, NAO INTERESSADO, INFORMACOES POR E-MAIL, CLIENTE DESLIGOU
+    emp_efetivos     = set()  # empresas: INTERESSADO, INFORMACOES POR E-MAIL
+    emp_dpmen        = set()  # empresas: INFORMACOES POR E-MAIL
 
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i == 0:
@@ -165,19 +180,26 @@ def calcular_discagem(caminho):
         total_tent += 1
 
         tel = norm_tel(row[orig_idx]) or norm_tel(row[dest_idx])
+        doc = row[doc_idx] if len(row) > doc_idx else None
+        empresa_id = doc if doc else tel
 
         sn_raw = row[sn_idx] if len(row) > sn_idx else None
         st_raw = row[st_idx] if len(row) > st_idx else None
         raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
         label  = normalizar_status(raw) if raw else None
+        rawn   = norm_txt(raw) if raw else ''
 
         if label:
             status_counter[label] += 1
             if raw:
                 raw_por_label[label].add(raw)
 
-        if label and label not in LABELS_NAO_DECISOR:
-            tel_decisor.add(tel)
+        if rawn in TAB_CONTATADAS:
+            emp_contatadas.add(empresa_id)
+        if rawn in TAB_EFETIVOS:
+            emp_efetivos.add(empresa_id)
+        if rawn in TAB_DPMEN:
+            emp_dpmen.add(empresa_id)
         if label == LABEL_INTERESSADO:
             tel_interesse.add(tel)
 
@@ -195,13 +217,16 @@ def calcular_discagem(caminho):
     st_tooltips = [', '.join(sorted(raw_por_label.get(s[0], set()))) for s in st_items]
 
     print(f'  Total Tentativas: {total_tent}')
-    print(f'  Decisor: {len(tel_decisor)} | Interessados: {len(tel_interesse)}')
+    print(f'  Empresas contatadas: {len(emp_contatadas)} | Interessados: {len(tel_interesse)}')
+    print(f'  Contatos efetivos: {len(emp_efetivos)} | Leads DPMEN: {len(emp_dpmen)}')
     print(f'  Status: {dict(st_items[:5])} ...')
 
     return {
         'tentativas':    total_tent,
-        'decisor':       len(tel_decisor),
+        'decisor':       len(emp_contatadas),
         'interessados':  len(tel_interesse),
+        'efetivos':      len(emp_efetivos),
+        'dpmen':         len(emp_dpmen),
         'statusLabels':  [s[0] for s in st_items],
         'statusData':    [s[1] for s in st_items],
         'statusTooltips': st_tooltips,
@@ -226,10 +251,13 @@ def js_num(lst):
 def gerar_bloco(base, disc):
     empresas = base['empresas']
     tent     = disc['tentativas']
-    decisor  = disc['decisor']
+    decisor  = disc['decisor']       # Empresas contatadas
     interess = disc['interessados']
+    efetivos = disc['efetivos']
+    dpmen    = disc['dpmen']
     taxa     = (interess / decisor * 100) if decisor > 0 else 0
     media    = (tent / empresas) if empresas > 0 else 0
+    taxa_interesse = (interess / decisor * 100) if decisor > 0 else 0
 
     periodo = f"{disc['evoLabels'][0]} — {disc['evoLabels'][-1]}" if disc['evoLabels'] else ''
     status_labels = disc['statusLabels'] or ['Sem dados']
@@ -244,7 +272,7 @@ def gerar_bloco(base, disc):
     empresas: '{fmt_num(empresas)}', empresasLabel: '🏢 Empresas na Base',
     mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa',
     tentativas: '{fmt_num(tent)}', interessados: '{fmt_num(interess)}', conversao: '{fmt_pct(taxa)}',
-    decisor: '{fmt_num(decisor)}', decisorSub: 'Apenas Prospecção IEL', media: '{fmt_dec(media)}', trend: '',
+    decisor: '{fmt_num(decisor)}', decisorLabel: '📋 Empresas Contatadas', decisorSub: 'Apenas Prospecção IEL', media: '{fmt_dec(media)}', trend: '',
     statusLabels: {js_str(status_labels)}, statusData: {js_num(status_data)}, statusColors:null,
     statusTooltips: {js_str(disc['statusTooltips'])},
     evolucaoLabels: {js_str(evo_labels)},
@@ -252,7 +280,14 @@ def gerar_bloco(base, disc):
     showWpp: false,
     wppTitle: '', wppDesc: '',
     wppKpiLabels: [], wppListLabels: [], wppPieLabels: [],
-    wppEnv:'-', wppResp:'-', wppTaxa:'-', wppSem:'-', wppInfo:'-', wppEmail:'-', wppPie:[0,1]
+    wppEnv:'-', wppResp:'-', wppTaxa:'-', wppSem:'-', wppInfo:'-', wppEmail:'-', wppPie:[0,1],
+    hideConvMedia: true,
+    showIelExtra: true,
+    ielEfetivos: '{fmt_num(efetivos)}',
+    ielTaxaInteresse: '{fmt_pct(taxa_interesse)}',
+    ielDpmen: '{fmt_num(dpmen)}',
+    ielInscritas: '-',
+    ielTaxaConv: '-'
   }},
   /* IEL_END */"""
 
