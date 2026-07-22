@@ -13,6 +13,9 @@ import openpyxl
 import re
 import glob
 import os
+import io
+import urllib.request
+import http.cookiejar
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
@@ -29,8 +32,14 @@ DEPARA_PATH   = r'Arquivos\bases_apoio\tab_de-para.xlsx'
 PASTA_AGEND   = r'Arquivos\nao_atualizaveis\Agendamento_Smart_Factory'
 PREFIXO_AGEND = 'Discagem_Smart Factory Agendamentos'
 
-# --- Lista de Agendamentos Smart Factory (agenda propriamente dita) ---
-PREFIXO_AGEND_LISTA = 'Smart Factory Agendamentos'
+# --- Lista de Agendamentos Smart Factory (agenda propriamente dita, SharePoint) ---
+# Colunas: E(4) RAZAO SOCIAL, I(8) Solucao de Interesse, L(11) DATA E HORA AGENDAMENTO
+AGEND_LISTA_URL = ('https://ddmadvbr-my.sharepoint.com/:x:/g/personal/'
+                   'denisesantos_firjan_grupoddm_com_br/'
+                   'IQDEsPo9BeR-QIfKcR0znz_eAW6NK3xj6Xb6VJWtP3SDJE0?download=1')
+AL_RAZAO = 4   # E
+AL_SOL   = 8   # I
+AL_DATA  = 11  # L
 
 # Número da empresa — quando aparece em ORIGEM, usar DESTINO
 NOSSO_NUMERO = '2120384382'  # (21) 2038-4382 normalizado
@@ -43,6 +52,9 @@ LABEL_INTERESSADO  = 'Interessado'
 
 # Agendamentos: status (raw, nao esta no de-para) que indica agendamento concluido
 LABEL_AGENDADO = 'Agendamento Realizado'
+
+# Agendamentos: tabulacoes brutas (antes do de-para) que contam como "Contatos com Decisor"
+TAB_AGEND_DECISOR = {'AGENDAMENTO REALIZADO', 'NAO INTERESSADO', 'INTERESSADO', 'CLIENTE DESLIGOU'}
 
 STATUS_MAP = {}
 
@@ -64,6 +76,51 @@ def fmt_dec(n):
 
 def norm_tel(t):
     return re.sub(r'\D', '', str(t)) if t else ''
+
+def parse_data_agendamento(val):
+    """Converte a celula DATA E HORA AGENDAMENTO em datetime.
+    Aceita datetime/serial do Excel OU texto livre digitado manualmente,
+    nos formatos 'DD/MM/AAAA HH:MM' ou 'DD/MM HH:MM [horas]' (sem ano -> 2026)."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val
+    if isinstance(val, (int, float)) and val > 0:
+        try:
+            return datetime(1899, 12, 30) + timedelta(days=float(val))
+        except Exception:
+            return None
+    if isinstance(val, str):
+        s = val.strip()
+        m = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{2})', s)
+        if m:
+            dd, mo, yy, hh, mi = m.groups()
+            try:
+                return datetime(int(yy), int(mo), int(dd), int(hh), int(mi))
+            except Exception:
+                return None
+        m = re.match(r'(\d{1,2})/(\d{1,2})\s+(\d{1,2}):(\d{2})', s)
+        if m:
+            dd, mo, hh, mi = m.groups()
+            try:
+                return datetime(2026, int(mo), int(dd), int(hh), int(mi))
+            except Exception:
+                return None
+    return None
+
+def baixar_sharepoint(url):
+    """Baixa o .xlsx do SharePoint (link anonimo) via cookie jar."""
+    cj = http.cookiejar.CookieJar()
+    op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    op.addheaders = [('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')]
+    resp = op.open(url, timeout=60)
+    return resp.read()
+
+def norm_txt(s):
+    """Maiuscula, sem acento - para comparar tabulacoes brutas."""
+    import unicodedata
+    b = unicodedata.normalize('NFKD', str(s).strip().upper())
+    return ''.join(c for c in b if not unicodedata.combining(c))
 
 def to_datetime(val):
     if val is None: return None
@@ -260,6 +317,8 @@ def calcular_agendamentos_smart(caminho):
     ws = wb[aba]
 
     data_idx = 0   # col A = DATA
+    orig_idx = 7   # col H = ORIGEM
+    dest_idx = 8   # col I = DESTINO
     st_idx   = 10  # col K = STATUS
     sn_idx   = 11  # col L = STATUS_NEGOCIO
 
@@ -267,6 +326,7 @@ def calcular_agendamentos_smart(caminho):
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
     evolucao       = {}
+    tel_decisor    = set()
 
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i == 0:
@@ -280,10 +340,16 @@ def calcular_agendamentos_smart(caminho):
         st_raw = row[st_idx] if len(row) > st_idx else None
         raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
         label  = normalizar_status(raw) if raw else None
+        rawn   = norm_txt(raw) if raw else ''
 
         if label:
             status_counter[label] += 1
             if raw: raw_por_label[label].add(raw)
+
+        if rawn in TAB_AGEND_DECISOR:
+            orig_norm = norm_tel(row[orig_idx])
+            tel = norm_tel(row[dest_idx]) if orig_norm == NOSSO_NUMERO else orig_norm
+            tel_decisor.add(tel)
 
         dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
         if dk not in evolucao:
@@ -299,10 +365,12 @@ def calcular_agendamentos_smart(caminho):
     st_tooltips = [', '.join(sorted(raw_por_label.get(s[0], set()))) for s in st_items]
 
     print(f'  Total Agendamentos: {total}')
+    print(f'  Contatos com Decisor: {len(tel_decisor)}')
     print(f'  Status: {dict(st_items[:5])} ...')
 
     return {
-        'agendTotal':          fmt_num(total),
+        'agendTotal':          total,
+        'agendDecisor':        len(tel_decisor),
         'agendStatusLabels':   [s[0] for s in st_items],
         'agendStatusData':     [s[1] for s in st_items],
         'agendStatusTooltips': st_tooltips,
@@ -312,45 +380,54 @@ def calcular_agendamentos_smart(caminho):
     }
 
 
-def calcular_agendamentos_lista(caminho):
-    """Le o Smart Factory Agendamentos.xlsx.
-    Retorna so as linhas com DATA E HORA AGENDAMENTO (col K) preenchida.
-    Colunas: D (idx3) RAZAO SOCIAL, H (idx7) Solucao de Interesse,
-    K (idx10) DATA E HORA AGENDAMENTO.
+def calcular_lista_agendamentos_sharepoint():
+    """Baixa a Lista de Agendamentos Smart Factory do SharePoint.
+    Colunas: E(4) RAZAO SOCIAL, I(8) Solucao de Interesse, L(11) DATA E HORA AGENDAMENTO.
+    Empresas na Base = Razao Social unicas (todas as linhas).
+    Agendamentos = linhas com a coluna L preenchida (data e hora marcada).
     """
-    print(f'  Lendo Lista de Agendamentos: {os.path.basename(caminho)}')
-    wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
+    print('  Baixando Lista de Agendamentos Smart Factory (SharePoint)...')
+    dados = baixar_sharepoint(AGEND_LISTA_URL)
+    wb = openpyxl.load_workbook(io.BytesIO(dados), read_only=True, data_only=True)
     ws = wb[wb.sheetnames[0]]
 
-    razao_idx = 3    # D
-    sol_idx   = 7    # H
-    data_idx  = 10   # K
+    razoes = set()
+    linhas_marcadas = []
 
-    linhas = []
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i == 0:
             continue
-        dt = to_datetime(row[data_idx]) if len(row) > data_idx else None
-        if not dt:
+        if not any(c is not None and str(c).strip() for c in row[:13]):
             continue
-        razao = str(row[razao_idx]).strip() if len(row) > razao_idx and row[razao_idx] else ''
-        sol   = str(row[sol_idx]).strip()   if len(row) > sol_idx   and row[sol_idx]   else ''
-        linhas.append((dt, razao, sol))
+        if len(row) > AL_RAZAO and row[AL_RAZAO]:
+            razoes.add(str(row[AL_RAZAO]).strip())
+
+        dt = parse_data_agendamento(row[AL_DATA]) if len(row) > AL_DATA else None
+        if dt:
+            razao = str(row[AL_RAZAO]).strip() if len(row) > AL_RAZAO and row[AL_RAZAO] else ''
+            sol   = str(row[AL_SOL]).strip()   if len(row) > AL_SOL   and row[AL_SOL]   else ''
+            linhas_marcadas.append((dt, razao, sol))
 
     wb.close()
-    linhas.sort(key=lambda x: x[0])
+    linhas_marcadas.sort(key=lambda x: x[0])
 
-    print(f'  Agendamentos com data marcada: {len(linhas)}')
+    empresas_com_agend = {razao for _, razao, _ in linhas_marcadas if razao}
+
+    print(f'  Empresas na base: {len(razoes)}')
+    print(f'  Agendamentos (coluna L preenchida): {len(linhas_marcadas)} | Empresas com agendamento: {len(empresas_com_agend)}')
 
     return {
-        'agendListaData':  [f"{dt.day:02d}/{MES_PT[dt.month]} {dt.hour:02d}:{dt.minute:02d}" for dt, _, _ in linhas],
-        'agendListaRazao': [razao for _, razao, _ in linhas],
-        'agendListaSol':   [sol for _, _, sol in linhas],
+        'empresas':          len(razoes),
+        'agendamentos':      len(linhas_marcadas),
+        'agendamentosEmpresas': len(empresas_com_agend),
+        'agendListaData':  [f"{dt.day:02d}/{MES_PT[dt.month]} {dt.hour:02d}:{dt.minute:02d}" for dt, _, _ in linhas_marcadas],
+        'agendListaRazao': [razao for _, razao, _ in linhas_marcadas],
+        'agendListaSol':   [sol for _, _, sol in linhas_marcadas],
     }
 
 
-def combinar_smart(m, r, w=None, agend=None, agend_lista=None):
-    """Combina Mailing + Retorno Smart Factory (+ WhatsApp e Agendamentos opcionais)."""
+def combinar_smart(m, r, w=None):
+    """Combina Mailing + Retorno Smart Factory (+ WhatsApp opcional)."""
     empresas  = m['_empresas']
     tent      = r['_tentativas']
     decisor   = len(r['_tel_decisor'])
@@ -401,17 +478,6 @@ def combinar_smart(m, r, w=None, agend=None, agend_lista=None):
         'wppInfo':       wpp_info,
         'wppEmail':      wpp_email,
         'wppPie':        wpp_pie,
-        'showAgend':          agend is not None,
-        'agendTotal':          agend['agendTotal']          if agend else '-',
-        'agendStatusLabels':   agend['agendStatusLabels']   if agend else [],
-        'agendStatusData':     agend['agendStatusData']     if agend else [],
-        'agendStatusTooltips': agend['agendStatusTooltips'] if agend else [],
-        'agendEvolucaoLabels': agend['agendEvolucaoLabels'] if agend else [],
-        'agendTentDia':        agend['agendTentDia']        if agend else [],
-        'agendConvDia':        agend['agendConvDia']        if agend else [],
-        'agendListaData':      agend_lista['agendListaData']  if agend_lista else [],
-        'agendListaRazao':     agend_lista['agendListaRazao'] if agend_lista else [],
-        'agendListaSol':       agend_lista['agendListaSol']   if agend_lista else [],
     }
 
 
@@ -423,17 +489,40 @@ def calcular_kpis_smart():
     except FileNotFoundError as e:
         print(f'  [AVISO] WhatsApp nao encontrado — secao sera ocultada. {e}')
         w = None
-    try:
-        agend = calcular_agendamentos_smart(encontrar_arquivo(PASTA_AGEND, PREFIXO_AGEND))
-    except FileNotFoundError as e:
-        print(f'  [AVISO] Agendamentos nao encontrado — secao sera ocultada. {e}')
-        agend = None
-    try:
-        agend_lista = calcular_agendamentos_lista(encontrar_arquivo(PASTA_AGEND, PREFIXO_AGEND_LISTA))
-    except FileNotFoundError as e:
-        print(f'  [AVISO] Lista de Agendamentos nao encontrada. {e}')
-        agend_lista = None
-    return combinar_smart(m, r, w, agend, agend_lista)
+    return combinar_smart(m, r, w)
+
+
+def calcular_kpis_smart_agend():
+    """Campanha 'Smart Factory - Agendamentos' (aba propria)."""
+    lista   = calcular_lista_agendamentos_sharepoint()
+    agend   = calcular_agendamentos_smart(encontrar_arquivo(PASTA_AGEND, PREFIXO_AGEND))
+
+    empresas = lista['empresas']
+    agendamentos_total     = lista['agendamentos']
+    agendamentos_empresas  = lista['agendamentosEmpresas']
+    tent    = agend['agendTotal']
+    decisor = agend['agendDecisor']
+    media   = (tent / empresas) if empresas > 0 else 0
+    taxa    = (agendamentos_empresas / decisor * 100) if decisor > 0 else 0
+
+    return {
+        'empresas':      fmt_num(empresas),
+        'tentativas':    fmt_num(tent),
+        'decisor':       fmt_num(decisor),
+        'media':         fmt_dec(media),
+        'agendamentos':       fmt_num(agendamentos_empresas),
+        'agendamentosTotal':  fmt_num(agendamentos_total),
+        'conversao':     fmt_pct(taxa),
+        'statusLabels':  agend['agendStatusLabels'],
+        'statusData':    agend['agendStatusData'],
+        'statusTooltips': agend['agendStatusTooltips'],
+        'evoLabels':     agend['agendEvolucaoLabels'],
+        'tentDia':       agend['agendTentDia'],
+        'convDia':       agend['agendConvDia'],
+        'agendListaData':  lista['agendListaData'],
+        'agendListaRazao': lista['agendListaRazao'],
+        'agendListaSol':   lista['agendListaSol'],
+    }
 
 # ═══════════════════════════════════════════════════════════
 # GERAÇÃO DO BLOCO JS
@@ -445,7 +534,6 @@ def gerar_bloco_smart(k):
 
     show_wpp  = 'true' if k.get('showWpp') else 'false'
     wpp_pie   = js_num(k.get('wppPie', [0, 1]))
-    show_agend = 'true' if k.get('showAgend') else 'false'
 
     periodo = f"{k['evoLabels'][0]} — {k['evoLabels'][-1]}" if k['evoLabels'] else ''
     return f"""  /* SMART_START */
@@ -466,20 +554,38 @@ def gerar_bloco_smart(k):
     wppKpiLabels: ['📤 Total Enviados','💬 Total Respostas','📊 Taxa de Resposta','🔇 Sem Resposta'],
     wppListLabels: ['Mensagens Enviadas','Informados','Solicitar E-mail','Sem Resposta'],
     wppPieLabels: ['Respostas','Sem Resposta'],
-    wppEnv:'{k.get('wppEnv','-')}', wppResp:'{k.get('wppResp','-')}', wppTaxa:'{k.get('wppTaxa','-')}', wppSem:'{k.get('wppSem','-')}', wppInfo:'{k.get('wppInfo','-')}', wppEmail:'{k.get('wppEmail','-')}', wppPie:{wpp_pie},
-    showAgend: {show_agend},
-    agendTotal: '{k.get('agendTotal','-')}',
-    agendStatusLabels: {js_str(k.get('agendStatusLabels', []))},
-    agendStatusData: {js_num(k.get('agendStatusData', []))},
-    agendStatusTooltips: {js_str(k.get('agendStatusTooltips', []))},
-    agendEvolucaoLabels: {js_str(k.get('agendEvolucaoLabels', []))},
-    agendTentDia: {js_num(k.get('agendTentDia', []))},
-    agendConvDia: {js_num(k.get('agendConvDia', []))},
+    wppEnv:'{k.get('wppEnv','-')}', wppResp:'{k.get('wppResp','-')}', wppTaxa:'{k.get('wppTaxa','-')}', wppSem:'{k.get('wppSem','-')}', wppInfo:'{k.get('wppInfo','-')}', wppEmail:'{k.get('wppEmail','-')}', wppPie:{wpp_pie}
+  }},
+  /* SMART_END */"""
+
+
+def gerar_bloco_smart_agend(k):
+    def js_str(lst): return '[' + ','.join(f"'{str(v).replace(chr(39), chr(92)+chr(39))}'" for v in lst) + ']'
+    def js_num(lst): return '[' + ','.join(str(v) for v in lst) + ']'
+
+    periodo = f"{k['evoLabels'][0]} — {k['evoLabels'][-1]}" if k['evoLabels'] else ''
+    return f"""  /* SMART_AGEND_START */
+  smart_agend: {{
+    label: '— Smart Factory - Agendamentos', desc: 'Agendamentos da campanha Smart Factory — dados filtrados', periodo: '{periodo}',
+    empresas: '{k['empresas']}', empresasLabel: '🏢 Empresas na Base',
+    mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa',
+    tentativas: '{k['tentativas']}', interessadosLabel: '📅 Agendamentos por Empresa', interessados: '{k['agendamentos']}', interessadosSub: 'Total de {k['agendamentosTotal']} agendamentos', conversao: '{k['conversao']}',
+    decisor: '{k['decisor']}', decisorSub: 'Apenas Smart Factory - Agendamentos', media: '{k['media']}', trend: '',
+    statusLabels: {js_str(k['statusLabels'])},
+    statusData: {js_num(k['statusData'])}, statusColors:null,
+    statusTooltips: {js_str(k.get('statusTooltips', ['']*len(k['statusLabels'])))},
+    evolucaoLabels: {js_str(k['evoLabels'])},
+    tentDia: {js_num(k['tentDia'])}, convDia: {js_num(k['convDia'])},
+    showWpp: false,
+    wppTitle: '', wppDesc: '',
+    wppKpiLabels: [], wppListLabels: [], wppPieLabels: [],
+    wppEnv:'-', wppResp:'-', wppTaxa:'-', wppSem:'-', wppInfo:'-', wppEmail:'-', wppPie:[0,1],
+    showAgendTable: true,
     agendListaData: {js_str(k.get('agendListaData', []))},
     agendListaRazao: {js_str(k.get('agendListaRazao', []))},
     agendListaSol: {js_str(k.get('agendListaSol', []))}
   }},
-  /* SMART_END */"""
+  /* SMART_AGEND_END */"""
 
 # ═══════════════════════════════════════════════════════════
 # ATUALIZAÇÃO DO INDEX.HTML
@@ -509,10 +615,10 @@ def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     try:
-        print('\n[0/3] Carregando de-para...')
+        print('\n[0/4] Carregando de-para...')
         STATUS_MAP.update(ler_depara(DEPARA_PATH))
 
-        print('\n[1/3] Calculando KPIs — Smart Factory...')
+        print('\n[1/4] Calculando KPIs — Smart Factory...')
         ks = calcular_kpis_smart()
 
         print(f'  Empresas na Base  : {ks["empresas"]}')
@@ -527,15 +633,26 @@ def main():
             print(f'  WhatsApp Respostas: {ks["wppResp"]}  ({ks["wppTaxa"]})')
             print(f'  WhatsApp Sem Resp : {ks["wppSem"]}')
             print(f'  Informados        : {ks["wppInfo"]}  |  E-mail: {ks["wppEmail"]}')
-        if ks.get('showAgend'):
-            print(f'  Agendamentos Total: {ks["agendTotal"]}')
-            print(f'  Agend. Status     : {dict(zip(ks["agendStatusLabels"][:5], ks["agendStatusData"][:5]))} ...')
-            print(f'  Lista Agendamentos: {len(ks.get("agendListaData", []))} linhas')
+        print('\n[2/3] Calculando KPIs — Smart Factory - Agendamentos...')
+        try:
+            ka = calcular_kpis_smart_agend()
+            print(f'  Empresas na Base  : {ka["empresas"]}')
+            print(f'  Total Tentativas  : {ka["tentativas"]}')
+            print(f'  Contatos Decisor  : {ka["decisor"]}')
+            print(f'  Agendamentos p/Empresa: {ka["agendamentos"]}  (total bruto: {ka["agendamentosTotal"]})')
+            print(f'  Taxa Conversao    : {ka["conversao"]}')
+            print(f'  Media Tent/Emp    : {ka["media"]}')
+            print(f'  Status: {dict(zip(ka["statusLabels"][:5], ka["statusData"][:5]))} ...')
+            print(f'  Lista Agendamentos: {len(ka.get("agendListaData", []))} linhas')
+            bloco_agend = gerar_bloco_smart_agend(ka)
+        except FileNotFoundError as e:
+            print(f'  [AVISO] Smart Factory - Agendamentos nao encontrado. {e}')
+            bloco_agend = None
 
-        print('\n[2/3] Gerando bloco JavaScript...')
+        print('\n[3/3] Gerando blocos JavaScript e atualizando index.html...')
         blocos = {'SMART': gerar_bloco_smart(ks)}
-
-        print('\n[3/3] Atualizando index.html...')
+        if bloco_agend:
+            blocos['SMART_AGEND'] = bloco_agend
         atualizar_html(INDEX_HTML, blocos)
 
         print()

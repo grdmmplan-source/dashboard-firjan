@@ -30,6 +30,7 @@ DEPARA_PATH = r'Arquivos\bases_apoio\tab_de-para.xlsx'
 PASTA_DISCAGEM = r'Arquivos\nao_atualizaveis\Ativo_Colônia de Férias'
 
 COL_UNIDADE = 10  # K - Unidade de Interesse (base de clientes)
+COL_MOTIVO  = 3   # D - Motivo do não interesse (base de clientes)
 
 STATUS_MAP = {}
 LABELS_NAO_DECISOR = {'Telefonia', 'Tentativa', 'Engano', 'Alo'}
@@ -129,6 +130,7 @@ def calcular_base():
 
     clientes = 0
     uni_counter = Counter()
+    motivo_counter = Counter()
     for r in dados:
         if not any(c.strip() for c in r):
             continue
@@ -136,15 +138,22 @@ def calcular_base():
         uni = r[COL_UNIDADE].strip() if len(r) > COL_UNIDADE else ''
         if uni:
             uni_counter[uni] += 1
+        motivo = r[COL_MOTIVO].strip() if len(r) > COL_MOTIVO else ''
+        if motivo:
+            motivo_counter[motivo] += 1
 
     uni_items = uni_counter.most_common()
+    motivo_items = motivo_counter.most_common()
     print(f'  Clientes na base: {clientes}')
     print(f'  Com unidade de interesse: {sum(uni_counter.values())} | Unidades distintas: {len(uni_items)}')
+    print(f'  Com motivo de nao interesse: {sum(motivo_counter.values())} | Motivos distintos: {len(motivo_items)}')
 
     return {
-        'clientes':  clientes,
-        'uniLabels': [u[0] for u in uni_items],
-        'uniData':   [u[1] for u in uni_items],
+        'clientes':     clientes,
+        'uniLabels':    [u[0] for u in uni_items],
+        'uniData':      [u[1] for u in uni_items],
+        'motivoLabels': [m[0] for m in motivo_items],
+        'motivoData':   [m[1] for m in motivo_items],
     }
 
 
@@ -275,7 +284,10 @@ def gerar_bloco(base, disc):
     wppEnv:'-', wppResp:'-', wppTaxa:'-', wppSem:'-', wppInfo:'-', wppEmail:'-', wppPie:[0,1],
     distToggle: true,
     uniLabels: {js_str(base['uniLabels'])},
-    uniData: {js_num(base['uniData'])}
+    uniData: {js_num(base['uniData'])},
+    showMotivo: true,
+    motivoLabels: {js_str(base['motivoLabels'])},
+    motivoData: {js_num(base['motivoData'])}
   }},
   /* COLONIA_INVERNO_END */"""
 

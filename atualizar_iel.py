@@ -131,13 +131,32 @@ def baixar_csv(sheet_id, gid=None):
     return list(csv.reader(io.StringIO(conteudo)))
 
 
+COL_MOTIVO = 10  # K - Motivo do não interesse
+
 def calcular_base():
     print('  Baixando base de empresas Prospecção IEL (Google Sheets)...')
     linhas = baixar_csv(SHEET_ID, GID)
     dados = linhas[1:]
-    empresas = sum(1 for r in dados if any(c.strip() for c in r))
+
+    empresas = 0
+    motivo_counter = Counter()
+    for r in dados:
+        if not any(c.strip() for c in r):
+            continue
+        empresas += 1
+        motivo = r[COL_MOTIVO].strip() if len(r) > COL_MOTIVO else ''
+        if motivo:
+            motivo_counter[motivo] += 1
+
+    motivo_items = motivo_counter.most_common()
     print(f'  Empresas na base: {empresas}')
-    return {'empresas': empresas}
+    print(f'  Com motivo de nao interesse: {sum(motivo_counter.values())} | Motivos distintos: {len(motivo_items)}')
+
+    return {
+        'empresas': empresas,
+        'motivoLabels': [m[0] for m in motivo_items],
+        'motivoData':   [m[1] for m in motivo_items],
+    }
 
 
 # ═══════════════════════════════════════════════════════════
@@ -287,7 +306,10 @@ def gerar_bloco(base, disc):
     ielTaxaInteresse: '{fmt_pct(taxa_interesse)}',
     ielDpmen: '{fmt_num(dpmen)}',
     ielInscritas: '-',
-    ielTaxaConv: '-'
+    ielTaxaConv: '-',
+    showMotivo: true,
+    motivoLabels: {js_str(base['motivoLabels'])},
+    motivoData: {js_num(base['motivoData'])}
   }},
   /* IEL_END */"""
 

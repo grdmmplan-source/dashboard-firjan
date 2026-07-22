@@ -5,13 +5,15 @@ Roda Retomada da Trilha + Smart Factory e atualiza o index.html completo.
 """
 
 import os, sys
-import atualizar_retomada       as ar
-import atualizar_smart          as asm
-import atualizar_cursos_niteroi as an
-import atualizar_saude          as asa
-import atualizar_sac            as asc
-import atualizar_receptivo      as arc
-import atualizar_ura            as aura
+import atualizar_retomada        as ar
+import atualizar_smart           as asm
+import atualizar_cursos_niteroi  as an
+import atualizar_saude           as asa
+import atualizar_sac             as asc
+import atualizar_receptivo       as arc
+import atualizar_ura             as aura
+import atualizar_colonia_inverno as aci
+import atualizar_iel             as ail
 
 def main():
     print()
@@ -49,46 +51,72 @@ def main():
         kt = ar.somar_campanhas([kr, ks, kn])
         print(f'  Total:{kt["empresas"]}  Tent:{kt["tentativas"]}  Int:{kt["interessados"]}  Dec:{kt["decisor"]}  Taxa:{kt["conversao"]}')
 
-        # 5. Gerar blocos JS
-        print('\n[5/5] Gerando blocos JavaScript...')
+        # 5. Smart Factory - Agendamentos (SharePoint + Discagem local) — nao quebra se offline
+        print('\n[5/6] Calculando Smart Factory - Agendamentos...')
+        bloco_smart_agend = None
+        try:
+            ka = asm.calcular_kpis_smart_agend()
+            print(f'  Emp:{ka["empresas"]}  Tent:{ka["tentativas"]}  Dec:{ka["decisor"]}  Agend:{ka["agendamentos"]}')
+            bloco_smart_agend = asm.gerar_bloco_smart_agend(ka)
+        except Exception as e:
+            print(f'  [AVISO] Smart Factory - Agendamentos nao atualizado: {e}')
+
+        # 6. Gerar blocos JS
+        print('\n[6/6] Gerando blocos JavaScript...')
         blocos = {
             'TODAS':    ar.gerar_bloco_todas(kt),
             'RETOMADA': ar.gerar_bloco_retomada(kr),
             'SMART':    asm.gerar_bloco_smart(ks),
             'NITEROI':  an.gerar_bloco_niteroi(kn),
         }
+        if bloco_smart_agend:
+            blocos['SMART_AGEND'] = bloco_smart_agend
 
-        # 6. Atualizar HTML (campanhas Ativo)
-        print('\n[6/6] Atualizando index.html (Ativo)...')
+        # 7. Atualizar HTML (campanhas Ativo)
+        print('\n[7/7] Atualizando index.html (Ativo)...')
         ar.atualizar_html(ar.INDEX_HTML, blocos)
 
-        # 6. Promocao Saude (Google Sheets) — nao quebra se estiver offline
-        print('\n[6/9] Promocao Saude (Google Sheets)...')
+        # 8. Promocao Saude (Google Sheets) — nao quebra se estiver offline
+        print('\n[8/11] Promocao Saude (Google Sheets)...')
         try:
             asa.main()
         except Exception as e:
             print(f'  [AVISO] Saude nao atualizada (offline ou erro): {e}')
 
-        # 7. SAC (SharePoint + Google Sheets) — nao quebra se estiver offline
-        print('\n[7/9] SAC (SharePoint)...')
+        # 9. SAC (SharePoint + Google Sheets) — nao quebra se estiver offline
+        print('\n[9/11] SAC (SharePoint)...')
         try:
             asc.main()
         except Exception as e:
             print(f'  [AVISO] SAC nao atualizado (offline ou erro): {e}')
 
-        # 8. Receptivo (arquivo local em Arquivos\atualizaveis)
-        print('\n[8/9] Receptivo (BSales2)...')
+        # 10. Receptivo (arquivo local em Arquivos\atualizaveis)
+        print('\n[10/11] Receptivo (BSales2)...')
         try:
             arc.main()
         except Exception as e:
             print(f'  [AVISO] Receptivo nao atualizado: {e}')
 
-        # 9. URA (arquivo local em Arquivos\atualizaveis)
-        print('\n[9/9] URA (BASE URA)...')
+        # 11. URA (arquivo local em Arquivos\atualizaveis)
+        print('\n[11/11] URA (BASE URA)...')
         try:
             aura.main()
         except Exception as e:
             print(f'  [AVISO] URA nao atualizada: {e}')
+
+        # 12. Colônia Inverno 2026 (Google Sheets + Discagem local) — nao quebra se offline
+        print('\n[12/13] Colônia Inverno 2026...')
+        try:
+            aci.main()
+        except Exception as e:
+            print(f'  [AVISO] Colônia Inverno 2026 nao atualizada: {e}')
+
+        # 13. Prospecção IEL (Google Sheets + Discagem local) — nao quebra se offline
+        print('\n[13/13] Prospecção IEL...')
+        try:
+            ail.main()
+        except Exception as e:
+            print(f'  [AVISO] Prospecção IEL nao atualizada: {e}')
 
         # 10. Carimbo de data/hora da atualizacao
         ts = asc.carimbar_atualizacao(asc.INDEX_HTML)
