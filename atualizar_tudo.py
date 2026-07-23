@@ -14,6 +14,7 @@ import atualizar_receptivo       as arc
 import atualizar_ura             as aura
 import atualizar_colonia_inverno as aci
 import atualizar_iel             as ail
+import atualizar_qualidade       as aq
 
 def main():
     print()
@@ -96,6 +97,12 @@ def main():
             arc.main()
         except Exception as e:
             print(f'  [AVISO] Receptivo nao atualizado: {e}')
+
+        print('\n[10b/11] Qualidade (Monitoria)...')
+        try:
+            aq.main()
+        except Exception as e:
+            print(f'  [AVISO] Qualidade nao atualizada: {e}')
 
         # 11. URA (arquivo local em Arquivos\atualizaveis)
         print('\n[11/11] URA (BASE URA)...')
