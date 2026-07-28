@@ -27,7 +27,7 @@ ABA_AVAL      = 'avaliacoes'
 COL_OPERADOR = 3   # D
 COL_NOTA     = 6   # G
 
-N_AGENTES = 4
+N_AGENTES = 5
 
 
 # ═══════════════════════════════════════════════════════════

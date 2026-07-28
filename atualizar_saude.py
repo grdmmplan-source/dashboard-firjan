@@ -262,7 +262,10 @@ def processar(rows, aux_cap=None):
     from collections import Counter
     if aux_cap is None:
         aux_cap = {}
-    body = rows[1:]
+    # A planilha hoje NAO tem linha de cabecalho (dados comecam na linha 1).
+    # So pula a 1a linha se ela realmente parecer cabecalho (col A nao e uma data).
+    tem_cabecalho = bool(rows) and parse_data(cel(rows[0], COL_DATA)) == 0
+    body = rows[1:] if tem_cabecalho else rows
     emp_list, aco_list, prof_list = [], [], []
     emp_idx, aco_idx, prof_idx = {}, {}, {}
 

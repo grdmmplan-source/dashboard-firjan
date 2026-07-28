@@ -53,12 +53,12 @@ COL_PES   = 16   # Q  Pesquisa
 REDES_URL = ('https://ddmadvbr-my.sharepoint.com/:x:/g/personal/'
              'fernanda_castro_grupoddm_com_br/'
              'IQCobMqlyAWfT7aBxT5EGURCAaAxahCZQjDD0eCyvVChMv0?download=1')
-RS_ASSUNTO  = 4   # E  Assunto
-RS_UNIDADE  = 5   # F  Unidade
-RS_ENT      = 6   # G  Entidade -> filtro Entidade
-RS_REGIONAL = 7   # H  Regional -> filtro Regional
-RS_DATA     = 9   # J  Resolvido (data)
-RS_CANAL    = 10  # K  Observacao -> Canal (Instagram/Facebook/Messenger)
+RS_ASSUNTO  = 5   # F  Assunto
+RS_UNIDADE  = 6   # G  Unidade
+RS_ENT      = 7   # H  Entidade -> filtro Entidade
+RS_REGIONAL = 8   # I  Regional -> filtro Regional
+RS_DATA     = 10  # K  Resolvido (data)
+RS_CANAL    = 11  # L  Observacao -> Canal (Instagram/Facebook/Messenger)
 
 # --- Arquivo "Autonomia e Renda" (SharePoint, separado por abas/meses) ---
 AUTONOMIA_URL = ('https://ddmadvbr-my.sharepoint.com/:x:/g/personal/'
