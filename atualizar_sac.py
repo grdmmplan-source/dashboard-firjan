@@ -58,6 +58,7 @@ COL_TIPO    = 10  # K  Tipo de Registro
 COL_FIM     = 13  # N  Data de Finalizacao
 COL_SAT     = 14  # O  Nivel de Satisfacao
 COL_ASSUNTO = 19  # T  Assunto
+COL_IMPACTO = 21  # V  Impacto (so existe na Fonte 1 / SharePoint)
 
 # --- Colunas fonte 2: Google Sheets ---
 SAC2_URL = ('https://docs.google.com/spreadsheets/d/'
@@ -181,6 +182,7 @@ def processar(xlsx_bytes):
     canal_idx, reg_idx, tipo_idx = {}, {}, {}
     ent_list, assunto_list, prod_list, uni_list = [], [], [], []
     ent_idx, assunto_idx, prod_idx, uni_idx = {}, {}, {}, {}
+    impacto_list, impacto_idx = [], {}
 
     def get_idx(val, lst, mp):
         v = str(val).strip() if val is not None else ''
@@ -215,6 +217,7 @@ def processar(xlsx_bytes):
         ui = get_idx(cel(r, COL_UNI), uni_list, uni_idx)   # Unidade (col H) -> ranking
         aci = get_idx(cel(r, COL_ASSUNTO), assunto_list, assunto_idx)
         pi = get_idx(cel(r, COL_PROD),    prod_list,    prod_idx)
+        ii = get_idx(cel(r, COL_IMPACTO), impacto_list, impacto_idx)
         sc = sat_code(cel(r, COL_SAT))
         if sc == 1:
             sat += 1
@@ -246,7 +249,7 @@ def processar(xlsx_bytes):
                 n_delta += 1
                 dl = d
 
-        data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui])
+        data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui, ii])
         raw_rows1.append([fmt_raw(v) for v in r])
 
     tmr = (soma_delta / n_delta) if n_delta else 0
@@ -259,14 +262,15 @@ def processar(xlsx_bytes):
     outros_labels = sorted(outros_set, key=lambda s: (s != '(em branco)', s.lower()))
     print(f'  "Outros" abrange: {outros_labels}')
     print(f'  Entidades: {len([e for e in ent_list if e])} | Assuntos: {len([a for a in assunto_list if a])} | Produtos: {len([p for p in prod_list if p])}')
+    print(f'  Niveis de Impacto: {[i for i in impacto_list if i]}')
 
-    extras = {'ent': ent_list, 'assunto': assunto_list, 'prod': prod_list, 'uni': uni_list}
+    extras = {'ent': ent_list, 'assunto': assunto_list, 'prod': prod_list, 'uni': uni_list, 'impacto': impacto_list}
     return canal_list, reg_list, tipo_list, data_rows, erros, outros_labels, extras, headers1, raw_rows1
 
 
 def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, tipo_idx,
                ent_list, ent_idx, assunto_list, assunto_idx, prod_list, prod_idx,
-               uni_list, uni_idx):
+               uni_list, uni_idx, impacto_list, impacto_idx):
     """Processa a fonte 2 (Google Sheets) reaproveitando as listas da fonte 1."""
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
@@ -310,6 +314,7 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
         ui  = get_idx(cel(r, C2_UNI),     uni_list,     uni_idx)
         aci = get_idx(cel(r, C2_ASSUNTO), assunto_list, assunto_idx)
         pi  = get_idx(cel(r, C2_PROD),    prod_list,    prod_idx)
+        ii  = get_idx(None, impacto_list, impacto_idx)  # Fonte 2 nao tem coluna Impacto
         sc  = sat_code(cel(r, C2_SAT))
         if sc == 1:
             sat += 1
@@ -341,7 +346,7 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
                 n_delta += 1
                 dl = d
 
-        data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui])
+        data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui, ii])
         raw_rows2.append([fmt_raw(v) for v in r])
 
     print(f'  [Fonte 2] Total: {total} | Satisfeitos: {sat} | Insatisfeitos: {insat} | Outliers: {len(erros)}')
@@ -377,6 +382,7 @@ def gerar_bloco(canal_list, reg_list, tipo_list, data_rows, outros_labels=None, 
         f'const SAC_ASSUNTO={js_str(extras.get("assunto", []))};\n'
         f'const SAC_PROD={js_str(extras.get("prod", []))};\n'
         f'const SAC_UNI={js_str(extras.get("uni", []))};\n'
+        f'const SAC_IMPACTO={js_str(extras.get("impacto", []))};\n'
         f'const SAC_OUTROS={js_str(outros_labels or [])};\n'
         f'const SAC_ROWS={js_rows(data_rows)};\n'
         f'const SAC_HEADERS1={js_str(headers1 or [])};\n'
@@ -473,6 +479,7 @@ def main():
                 extras['assunto'], mk(extras['assunto']),
                 extras['prod'],    mk(extras['prod']),
                 extras['uni'],     mk(extras['uni']),
+                extras['impacto'], mk(extras['impacto']),
             )
             drows += drows2
             erros += erros2
