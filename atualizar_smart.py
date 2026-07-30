@@ -319,6 +319,7 @@ def calcular_agendamentos_smart(caminho):
     data_idx = 0   # col A = DATA
     orig_idx = 7   # col H = ORIGEM
     dest_idx = 8   # col I = DESTINO
+    tipo_idx = 9   # col J = TIPO
     st_idx   = 10  # col K = STATUS
     sn_idx   = 11  # col L = STATUS_NEGOCIO
 
@@ -347,8 +348,14 @@ def calcular_agendamentos_smart(caminho):
             if raw: raw_por_label[label].add(raw)
 
         if rawn in TAB_AGEND_DECISOR:
-            orig_norm = norm_tel(row[orig_idx])
-            tel = norm_tel(row[dest_idx]) if orig_norm == NOSSO_NUMERO else orig_norm
+            tipo = str(row[tipo_idx]).strip().upper() if len(row) > tipo_idx and row[tipo_idx] else ''
+            if tipo == 'DISCADOR':
+                tel = norm_tel(row[orig_idx])
+            elif tipo == 'SAINTE':
+                tel = norm_tel(row[dest_idx])
+            else:
+                orig_norm = norm_tel(row[orig_idx])
+                tel = norm_tel(row[dest_idx]) if orig_norm == NOSSO_NUMERO else orig_norm
             tel_decisor.add(tel)
 
         dk = f"{dt.day:02d}/{MES_PT[dt.month]}"

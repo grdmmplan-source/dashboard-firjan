@@ -178,6 +178,7 @@ def calcular_discagem(caminho):
     doc_idx  = 4    # E DOC (CNPJ)
     orig_idx = 7    # H ORIGEM
     dest_idx = 8    # I DESTINO
+    tipo_idx = 9    # J TIPO
     st_idx   = 10   # K STATUS
     sn_idx   = 11   # L STATUS_NEGOCIO
 
@@ -198,7 +199,13 @@ def calcular_discagem(caminho):
             continue
         total_tent += 1
 
-        tel = norm_tel(row[orig_idx]) or norm_tel(row[dest_idx])
+        tipo = str(row[tipo_idx]).strip().upper() if len(row) > tipo_idx and row[tipo_idx] else ''
+        if tipo == 'DISCADOR':
+            tel = norm_tel(row[orig_idx])
+        elif tipo == 'SAINTE':
+            tel = norm_tel(row[dest_idx])
+        else:
+            tel = norm_tel(row[orig_idx]) or norm_tel(row[dest_idx])
         doc = row[doc_idx] if len(row) > doc_idx else None
         empresa_id = doc if doc else tel
 
