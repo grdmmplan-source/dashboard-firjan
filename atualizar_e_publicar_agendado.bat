@@ -15,7 +15,7 @@ python atualizar_tudo.py --no-pause
 if %errorlevel% neq 0 (
     echo.
     echo [ERRO] Falha ao processar o Excel.
-    exit /b 1
+    exit 1
 )
 
 echo.
@@ -29,7 +29,7 @@ if errorlevel 1 (
     echo.
     echo [ERRO] Falha ao puxar commits remotos.
     echo Solucao: abra Git Bash e rode "git pull origin main" manualmente.
-    exit /b 1
+    exit 1
 )
 echo.
 echo [2b/2] Enviando para GitHub...
@@ -41,4 +41,4 @@ echo   PRONTO! Dashboard atualizado em ~1min:
 echo   https://grdmmplan-source.github.io/dashboard-firjan/
 echo ========================================
 echo.
-exit /b 0
+exit 0
