@@ -15,6 +15,7 @@ import atualizar_ura             as aura
 import atualizar_colonia_inverno as aci
 import atualizar_iel             as ail
 import atualizar_qualidade       as aq
+import atualizar_potencializee   as apz
 
 def main():
     print()
@@ -119,11 +120,18 @@ def main():
             print(f'  [AVISO] Colônia Inverno 2026 nao atualizada: {e}')
 
         # 13. Prospecção IEL (Google Sheets + Discagem local) — nao quebra se offline
-        print('\n[13/13] Prospecção IEL...')
+        print('\n[13/14] Prospecção IEL...')
         try:
             ail.main()
         except Exception as e:
             print(f'  [AVISO] Prospecção IEL nao atualizada: {e}')
+
+        # 14. PotencializEE (Google Sheets + Discagem local) — nao quebra se offline
+        print('\n[14/14] PotencializEE...')
+        try:
+            apz.main()
+        except Exception as e:
+            print(f'  [AVISO] PotencializEE nao atualizada: {e}')
 
         # 10. Carimbo de data/hora da atualizacao
         ts = asc.carimbar_atualizacao(asc.INDEX_HTML)
