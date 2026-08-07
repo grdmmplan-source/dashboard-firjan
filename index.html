@@ -1578,8 +1578,9 @@ function renderRecepCards(diN,dfN){
   const CANAL_EXCEL2SRC={Voz:'Telefone',Whatsapp:'Whatsapp','E-mail':'E-mail',Instagram:'Instagram',Chat:'Chat'};
   const getIECFixed=(src)=>{
     const base=(typeof INDICADORES_BASE!=='undefined')?INDICADORES_BASE:[];
+    const normB=s=>String(s||'').trim().toLowerCase();
     for(const r of base){
-      if(r.bloco!=='Indicadores por Canal — Metas'||r.tipo!=='IEC'||!r.canal)continue;
+      if(normB(r.bloco)!=='indicadores por canal — metas'||normB(r.tipo)!=='iec'||!r.canal)continue;
       if(CANAL_EXCEL2SRC[r.canal]!==src)continue;
       if(r.ini!=null&&r.fim!=null&&diN>=r.ini&&dfN<=r.fim&&r.entregNum!=null)return r.entregNum;
     }
@@ -1613,9 +1614,11 @@ function renderRecepCards(diN,dfN){
 function renderIndicadoresBase(diN,dfN,fc){
   const base=(typeof INDICADORES_BASE!=='undefined')?INDICADORES_BASE:[];
   const CANAL_EXCEL2SRC={Voz:'Telefone',Whatsapp:'Whatsapp','E-mail':'E-mail',Instagram:'Instagram',Chat:'Chat'};
+  const norm=s=>String(s||'').trim().toLowerCase();
   const montar=(bloco,elId)=>{
     const el=document.getElementById(elId); if(!el)return;
-    const doBloco=base.filter(r=>r.bloco===bloco && (!fc || !r.canal || CANAL_EXCEL2SRC[r.canal]===fc));
+    const blocoN=norm(bloco);
+    const doBloco=base.filter(r=>norm(r.bloco)===blocoN && (!fc || !r.canal || CANAL_EXCEL2SRC[r.canal]===fc));
     const grupos=[];
     const idx={};
     doBloco.forEach(r=>{
