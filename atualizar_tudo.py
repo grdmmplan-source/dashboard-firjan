@@ -15,6 +15,7 @@ import atualizar_ura             as aura
 import atualizar_colonia_inverno as aci
 import atualizar_iel             as ail
 import atualizar_qualidade       as aq
+import atualizar_indicadores     as aind
 import atualizar_potencializee   as apz
 
 def main():
@@ -104,6 +105,12 @@ def main():
             aq.main()
         except Exception as e:
             print(f'  [AVISO] Qualidade nao atualizada: {e}')
+
+        print('\n[10c/11] Base de Indicadores...')
+        try:
+            aind.main()
+        except Exception as e:
+            print(f'  [AVISO] Base de Indicadores nao atualizada: {e}')
 
         # 11. URA (arquivo local em Arquivos\atualizaveis)
         print('\n[11/11] URA (BASE URA)...')
