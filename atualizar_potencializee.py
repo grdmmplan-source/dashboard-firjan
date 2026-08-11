@@ -35,6 +35,35 @@ STATUS_MAP = {}
 LABELS_NAO_DECISOR = {'Telefonia', 'Tentativa', 'Engano', 'Alo'}
 LABEL_INTERESSADO  = 'Interessado'
 
+# Tabulacoes brutas que contam como "Interessado" (nao mexe no de-para para nao afetar outras campanhas)
+INTERESSADO_LINK_LABEL = 'Interessado / Link Enviado'
+INTERESSADO_RAW_LABELS = ['Interessado / Link Enviado', 'INTERESSADO']
+
+# Grafico "Distribuicao" (por status) so considera as tabulacoes CPC
+# 'Interessado / Link Enviado' e 'INTERESSADO' sao unificadas no rotulo 'Interessado / Link Enviado'
+CPC_LABELS = ['INFORMAÇÕES POR E-MAIL', 'Retornar', 'NAO INTERESSADO',
+              'Interessado / Link Enviado', 'INTERESSADO']
+CPC_LABEL_OVERRIDE = {
+    'Interessado / Link Enviado': INTERESSADO_LINK_LABEL,
+    'INTERESSADO': INTERESSADO_LINK_LABEL,
+}
+
+# Grafico "Evolucao Diaria" (tentativas) so considera as tabulacoes de insucesso
+INSUCESSO_LABELS = ['Falhou', 'Fora de Area / Cx de Mensagens', 'Ligação Muda',
+                     'Não Atendeu', 'Ocupado', 'Tel Não Atende / Ocupado',
+                     'Atendido', 'Engano', 'Cliente Desligou']
+
+
+def _norm_status(s):
+    import unicodedata
+    b = unicodedata.normalize('NFKD', str(s).strip().lower())
+    return ''.join(c for c in b if not unicodedata.combining(c))
+
+
+CPC_MAP = {_norm_status(s): CPC_LABEL_OVERRIDE.get(s, s) for s in CPC_LABELS}
+INSUCESSO_MAP = {_norm_status(s): s for s in INSUCESSO_LABELS}
+INTERESSADO_RAW_NORM = {_norm_status(s) for s in INTERESSADO_RAW_LABELS}
+
 MES_PT = {1:'Jan',2:'Fev',3:'Mar',4:'Abr',5:'Mai',6:'Jun',
           7:'Jul',8:'Ago',9:'Set',10:'Out',11:'Nov',12:'Dez'}
 
@@ -199,21 +228,23 @@ def calcular_discagem(caminho):
         raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
         label  = normalizar_status(raw) if raw else None
 
-        if label:
-            status_counter[label] += 1
-            if raw:
-                raw_por_label[label].add(raw)
+        raw_norm = _norm_status(raw) if raw else ''
+        if raw_norm in CPC_MAP:
+            canon = CPC_MAP[raw_norm]
+            status_counter[canon] += 1
+            raw_por_label[canon].add(raw)
 
         if label and label not in LABELS_NAO_DECISOR:
             tel_decisor.add(tel)
-        if label == LABEL_INTERESSADO:
+        if raw_norm in INTERESSADO_RAW_NORM:
             tel_interesse.add(tel)
 
         dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
         if dk not in evolucao:
             evolucao[dk] = {'date': dt.date(), 'tent': 0, 'conv': 0}
-        evolucao[dk]['tent'] += 1
-        if label == LABEL_INTERESSADO:
+        if raw_norm in INSUCESSO_MAP:
+            evolucao[dk]['tent'] += 1
+        if raw_norm in INTERESSADO_RAW_NORM:
             evolucao[dk]['conv'] += 1
 
     wb.close()
@@ -272,7 +303,7 @@ def gerar_bloco(base, disc):
     empresas: '{fmt_num(empresas)}', empresasLabel: '🏢 Empresas na Base',
     mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa',
     tentativas: '{fmt_num(tent)}', interessados: '{fmt_num(interess)}', conversao: '{fmt_pct(taxa)}',
-    decisor: '{fmt_num(decisor)}', decisorSub: 'Apenas PotencializEE', media: '{fmt_dec(media)}', trend: '',
+    decisor: '{fmt_num(decisor)}', decisorLabel: '👤 Status de Sucesso', decisorSub: 'Apenas PotencializEE', media: '{fmt_dec(media)}', trend: '',
     statusLabels: {js_str(status_labels)}, statusData: {js_num(status_data)}, statusColors:null,
     statusTooltips: {js_str(disc['statusTooltips'])},
     evolucaoLabels: {js_str(evo_labels)},
