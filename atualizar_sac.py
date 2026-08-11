@@ -59,6 +59,8 @@ COL_FIM     = 13  # N  Data de Finalizacao
 COL_SAT     = 14  # O  Nivel de Satisfacao
 COL_ASSUNTO = 19  # T  Assunto
 COL_IMPACTO = 21  # V  Impacto (so existe na Fonte 1 / SharePoint)
+COL_ENCAM   = 3   # D  Data de Encaminhamento (bloco "Impactos por Unidade")
+COL_ASSDET  = 20  # U  Detalhe do Assunto (bloco "Impactos por Unidade")
 
 # --- Colunas fonte 2: Google Sheets ---
 SAC2_URL = ('https://docs.google.com/spreadsheets/d/'
@@ -76,6 +78,8 @@ C2_ASSUNTO = 17  # R  Assunto
 C2_UNI     = 21  # V  Unidade
 C2_ENT     = 22  # W  Entidade
 C2_REG     = 23  # X  Regional
+C2_ENCAM   = 3   # D  Data de Encaminhamento (bloco "Impactos por Unidade")
+C2_ASSDET  = 18  # S  Detalhe do Assunto (bloco "Impactos por Unidade"; Fonte 2 nao tem Impacto)
 
 # ═══════════════════════════════════════════════════════════
 # FUNÇÕES
