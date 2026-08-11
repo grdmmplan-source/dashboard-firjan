@@ -170,6 +170,14 @@ def fmt_raw(v):
     return str(v).strip()
 
 
+def normalizar_unidade(v):
+    """Tudo que nao comeca com 'Unidade' (inclusive em branco) vira 'Firjan (Outras Áreas)'."""
+    s = str(v).strip() if v is not None else ''
+    if s.lower().startswith('unidade'):
+        return s
+    return 'Firjan (Outras Áreas)'
+
+
 def processar(xlsx_bytes):
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
@@ -187,6 +195,9 @@ def processar(xlsx_bytes):
     ent_list, assunto_list, prod_list, uni_list = [], [], [], []
     ent_idx, assunto_idx, prod_idx, uni_idx = {}, {}, {}, {}
     impacto_list, impacto_idx = [], {}
+    imp_uni_list, imp_uni_idx = [], {}
+    imp_assunto_list, imp_assunto_idx = [], {}
+    imp_nivel_list, imp_nivel_idx = [], {}
 
     def get_idx(val, lst, mp):
         v = str(val).strip() if val is not None else ''
@@ -195,7 +206,15 @@ def processar(xlsx_bytes):
             lst.append(v)
         return mp[v]
 
+    def get_idx_nf(val, lst, mp):
+        v = str(val).strip() if (val is not None and str(val).strip()) else 'Não Informado'
+        if v not in mp:
+            mp[v] = len(lst)
+            lst.append(v)
+        return mp[v]
+
     data_rows = []
+    imp_rows = []
     erros = []
     outros_set = set()
     total = sat = insat = 0
@@ -218,7 +237,7 @@ def processar(xlsx_bytes):
         ri = get_idx(cel(r, COL_REG),   reg_list,   reg_idx)
         ti = get_idx(cel(r, COL_TIPO),  tipo_list,  tipo_idx)
         ei = get_idx(cel(r, COL_ENT), ent_list, ent_idx)   # Entidade (col I, direta)
-        ui = get_idx(cel(r, COL_UNI), uni_list, uni_idx)   # Unidade (col H) -> ranking
+        ui = get_idx(normalizar_unidade(cel(r, COL_UNI)), uni_list, uni_idx)   # Unidade (col H) -> ranking
         aci = get_idx(cel(r, COL_ASSUNTO), assunto_list, assunto_idx)
         pi = get_idx(cel(r, COL_PROD),    prod_list,    prod_idx)
         ii = get_idx(cel(r, COL_IMPACTO), impacto_list, impacto_idx)
@@ -256,6 +275,15 @@ def processar(xlsx_bytes):
         data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui, ii])
         raw_rows1.append([fmt_raw(v) for v in r])
 
+        imp_raw = cel(r, COL_IMPACTO)
+        if imp_raw is not None and str(imp_raw).strip():  # sem Impacto = fora do bloco (nao existe "Nao Informado")
+            enc = to_dt(cel(r, COL_ENCAM))
+            dtEnc = (enc.year * 10000 + enc.month * 100 + enc.day) if enc else 0
+            iu = get_idx(normalizar_unidade(cel(r, COL_UNI)), imp_uni_list, imp_uni_idx)
+            ia = get_idx_nf(cel(r, COL_ASSDET), imp_assunto_list, imp_assunto_idx)
+            iv = get_idx(str(imp_raw).strip(), imp_nivel_list, imp_nivel_idx)
+            imp_rows.append([dtEnc, iu, ia, iv])
+
     tmr = (soma_delta / n_delta) if n_delta else 0
     print(f'  Total de SACs        : {total}')
     print(f'  Satisfeitos          : {sat}')
@@ -267,14 +295,23 @@ def processar(xlsx_bytes):
     print(f'  "Outros" abrange: {outros_labels}')
     print(f'  Entidades: {len([e for e in ent_list if e])} | Assuntos: {len([a for a in assunto_list if a])} | Produtos: {len([p for p in prod_list if p])}')
     print(f'  Niveis de Impacto: {[i for i in impacto_list if i]}')
+    print(f'  Impactos por Unidade: {len(imp_rows)} linhas | Unidades: {len(imp_uni_list)} | '
+          f'Detalhes de Assunto: {len(imp_assunto_list)} | Niveis: {imp_nivel_list}')
 
-    extras = {'ent': ent_list, 'assunto': assunto_list, 'prod': prod_list, 'uni': uni_list, 'impacto': impacto_list}
-    return canal_list, reg_list, tipo_list, data_rows, erros, outros_labels, extras, headers1, raw_rows1
+    extras = {
+        'ent': ent_list, 'assunto': assunto_list, 'prod': prod_list, 'uni': uni_list, 'impacto': impacto_list,
+        'impUni': imp_uni_list, 'impUniIdx': imp_uni_idx,
+        'impAssunto': imp_assunto_list, 'impAssuntoIdx': imp_assunto_idx,
+        'impNivel': imp_nivel_list, 'impNivelIdx': imp_nivel_idx,
+    }
+    return canal_list, reg_list, tipo_list, data_rows, erros, outros_labels, extras, headers1, raw_rows1, imp_rows
 
 
 def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, tipo_idx,
                ent_list, ent_idx, assunto_list, assunto_idx, prod_list, prod_idx,
-               uni_list, uni_idx, impacto_list, impacto_idx):
+               uni_list, uni_idx, impacto_list, impacto_idx,
+               imp_uni_list, imp_uni_idx, imp_assunto_list, imp_assunto_idx,
+               imp_nivel_list, imp_nivel_idx):
     """Processa a fonte 2 (Google Sheets) reaproveitando as listas da fonte 1."""
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
@@ -292,7 +329,15 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
             lst.append(v)
         return mp[v]
 
+    def get_idx_nf(val, lst, mp):
+        v = str(val).strip() if (val is not None and str(val).strip()) else 'Não Informado'
+        if v not in mp:
+            mp[v] = len(lst)
+            lst.append(v)
+        return mp[v]
+
     data_rows = []
+    imp_rows = []
     erros = []
     outros_set = set()
     total = sat = insat = 0
@@ -315,7 +360,7 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
         ri  = get_idx(cel(r, C2_REG),     reg_list,     reg_idx)
         ti  = get_idx(cel(r, C2_TIPO),    tipo_list,    tipo_idx)
         ei  = get_idx(cel(r, C2_ENT),     ent_list,     ent_idx)
-        ui  = get_idx(cel(r, C2_UNI),     uni_list,     uni_idx)
+        ui  = get_idx(normalizar_unidade(cel(r, C2_UNI)), uni_list, uni_idx)
         aci = get_idx(cel(r, C2_ASSUNTO), assunto_list, assunto_idx)
         pi  = get_idx(cel(r, C2_PROD),    prod_list,    prod_idx)
         ii  = get_idx(None, impacto_list, impacto_idx)  # Fonte 2 nao tem coluna Impacto
@@ -353,12 +398,14 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
         data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui, ii])
         raw_rows2.append([fmt_raw(v) for v in r])
 
+        # Fonte 2 nao tem coluna Impacto -> nao entra no bloco "Impactos por Unidade"
+
     print(f'  [Fonte 2] Total: {total} | Satisfeitos: {sat} | Insatisfeitos: {insat} | Outliers: {len(erros)}')
-    return data_rows, erros, headers2, raw_rows2
+    return data_rows, erros, headers2, raw_rows2, imp_rows
 
 
 def gerar_bloco(canal_list, reg_list, tipo_list, data_rows, outros_labels=None, extras=None,
-                headers1=None, raw_rows1=None, headers2=None, raw_rows2=None):
+                headers1=None, raw_rows1=None, headers2=None, raw_rows2=None, imp_rows=None):
     def js_str(lst):
         return '[' + ','.join("'" + str(v).replace('\\', '\\\\').replace("'", "\\'") + "'" for v in lst) + ']'
     def js_rows(rows):
@@ -393,6 +440,10 @@ def gerar_bloco(canal_list, reg_list, tipo_list, data_rows, outros_labels=None, 
         f'const SAC_RAW1={js_raw(raw_rows1 or [])};\n'
         f'const SAC_HEADERS2={js_str(headers2 or [])};\n'
         f'const SAC_RAW2={js_raw(raw_rows2 or [])};\n'
+        f'const SAC_IMP_UNI={js_str(extras.get("impUni", []))};\n'
+        f'const SAC_IMP_ASSUNTO={js_str(extras.get("impAssunto", []))};\n'
+        f'const SAC_IMP_NIVEL={js_str(extras.get("impNivel", []))};\n'
+        f'const SAC_IMP_ROWS={js_rows(imp_rows or [])};\n'
         '/* SAC_DATA_END */'
     )
 
@@ -467,14 +518,14 @@ def main():
         xlsx1 = baixar_xlsx(SAC_URL)
 
         print('\n[2/4] Processando fonte 1...')
-        canal, reg, tipo, drows, erros, outros, extras, h1, raw1 = processar(xlsx1)
+        canal, reg, tipo, drows, erros, outros, extras, h1, raw1, imp_rows = processar(xlsx1)
 
         h2, raw2 = [], []
         print('\n[3/4] Baixando Google Sheets (fonte 2)...')
         try:
             xlsx2 = baixar_gsheets(SAC2_URL)
             mk = lambda lst: {v: i for i, v in enumerate(lst)}
-            drows2, erros2, h2, raw2 = processar2(
+            drows2, erros2, h2, raw2, imp_rows2 = processar2(
                 xlsx2,
                 canal,             mk(canal),
                 reg,               mk(reg),
@@ -484,9 +535,13 @@ def main():
                 extras['prod'],    mk(extras['prod']),
                 extras['uni'],     mk(extras['uni']),
                 extras['impacto'], mk(extras['impacto']),
+                extras['impUni'],     extras['impUniIdx'],
+                extras['impAssunto'], extras['impAssuntoIdx'],
+                extras['impNivel'],   extras['impNivelIdx'],
             )
             drows += drows2
             erros += erros2
+            imp_rows += imp_rows2
             print(f'  Total combinado: {len(drows)} registros')
         except Exception as e2:
             print(f'  [AVISO] Fonte 2 falhou ({e2}). Continuando apenas com fonte 1.')
@@ -494,7 +549,7 @@ def main():
         escrever_erros(ERROS_TXT, erros, len(drows))
 
         print('\n[4/4] Atualizando index.html...')
-        bloco = gerar_bloco(canal, reg, tipo, drows, outros, extras, h1, raw1, h2, raw2)
+        bloco = gerar_bloco(canal, reg, tipo, drows, outros, extras, h1, raw1, h2, raw2, imp_rows)
         atualizar_html(INDEX_HTML, bloco)
         ts = carimbar_atualizacao(INDEX_HTML)
         print(f'  Atualizado em: {ts}')
