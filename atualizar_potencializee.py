@@ -226,7 +226,6 @@ def calcular_discagem(caminho):
         sn_raw = row[sn_idx] if len(row) > sn_idx else None
         st_raw = row[st_idx] if len(row) > st_idx else None
         raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
-        label  = normalizar_status(raw) if raw else None
 
         raw_norm = _norm_status(raw) if raw else ''
         if raw_norm in CPC_MAP:
@@ -234,7 +233,7 @@ def calcular_discagem(caminho):
             status_counter[canon] += 1
             raw_por_label[canon].add(raw)
 
-        if label and label not in LABELS_NAO_DECISOR:
+        if raw_norm in CPC_MAP:
             tel_decisor.add(tel)
         if raw_norm in INTERESSADO_RAW_NORM:
             tel_interesse.add(tel)
