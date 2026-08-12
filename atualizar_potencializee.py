@@ -158,13 +158,16 @@ def calcular_base():
 
     empresas = 0
     motivo_counter = Counter()
+    motivo_display = {}  # chave normalizada (case-insensitive) -> rotulo de exibicao (primeira grafia encontrada)
     for r in dados:
         if not any(c.strip() for c in r):
             continue
         empresas += 1
         motivo = r[COL_MOTIVO].strip() if len(r) > COL_MOTIVO else ''
         if motivo:
-            motivo_counter[motivo] += 1
+            chave = motivo.lower()
+            motivo_display.setdefault(chave, motivo)
+            motivo_counter[chave] += 1
 
     motivo_items = motivo_counter.most_common()
     print(f'  Empresas na base: {empresas}')
@@ -172,7 +175,7 @@ def calcular_base():
 
     return {
         'empresas':     empresas,
-        'motivoLabels': [m[0] for m in motivo_items],
+        'motivoLabels': [motivo_display[m[0]] for m in motivo_items],
         'motivoData':   [m[1] for m in motivo_items],
     }
 
@@ -204,7 +207,7 @@ def calcular_discagem(caminho):
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
     evolucao = {}
-    tel_decisor   = set()
+    decisor_count = 0
     tel_interesse = set()
 
     for i, row in enumerate(ws.iter_rows(values_only=True)):
@@ -232,9 +235,7 @@ def calcular_discagem(caminho):
             canon = CPC_MAP[raw_norm]
             status_counter[canon] += 1
             raw_por_label[canon].add(raw)
-
-        if raw_norm in CPC_MAP:
-            tel_decisor.add(tel)
+            decisor_count += 1
         if raw_norm in INTERESSADO_RAW_NORM:
             tel_interesse.add(tel)
 
@@ -253,12 +254,12 @@ def calcular_discagem(caminho):
     st_tooltips = [', '.join(sorted(raw_por_label.get(s[0], set()))) for s in st_items]
 
     print(f'  Total Tentativas: {total_tent}')
-    print(f'  Decisor: {len(tel_decisor)} | Interessados: {len(tel_interesse)}')
+    print(f'  Decisor: {decisor_count} | Interessados: {len(tel_interesse)}')
     print(f'  Status: {dict(st_items[:5])} ...')
 
     return {
         'tentativas':    total_tent,
-        'decisor':       len(tel_decisor),
+        'decisor':       decisor_count,
         'interessados':  len(tel_interesse),
         'statusLabels':  [s[0] for s in st_items],
         'statusData':    [s[1] for s in st_items],
