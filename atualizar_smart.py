@@ -215,9 +215,11 @@ def calcular_retorno_smart(caminho, aba):
     total_tent    = 0
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
-    evolucao      = {}
-    tel_decisor   = set()
+    naosucesso_counter = Counter()
+    raw_por_label_ns   = defaultdict(set)
+    decisor_count = 0
     tel_interesse = set()
+    data_min = data_max = None
 
     for row in wb_rows:
         dt = to_datetime(row[data_idx])
@@ -225,6 +227,10 @@ def calcular_retorno_smart(caminho, aba):
             continue  # só conta linha com data
 
         total_tent += 1
+        if data_min is None or dt < data_min:
+            data_min = dt
+        if data_max is None or dt > data_max:
+            data_max = dt
 
         # Telefone: se ORIGEM for o nosso número → usar DESTINO; senão → ORIGEM
         orig_norm = norm_tel(row[orig_idx])
@@ -237,35 +243,36 @@ def calcular_retorno_smart(caminho, aba):
         sn_raw = row[sn_idx]
         st_raw = row[st_idx]
         raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
+        raw_n  = norm_txt(raw) if raw else ''
         label  = normalizar_status(raw) if raw else None
 
-        if label:
-            status_counter[label] += 1
-            if raw: raw_por_label[label].add(raw)
+        if raw_n in SUCESSO_MAP:
+            canon = SUCESSO_MAP[raw_n]
+            status_counter[canon] += 1
+            raw_por_label[canon].add(raw)
+            decisor_count += 1
+        elif raw:
+            ns_label = SEM_OPERADOR_LABEL_CANON if raw_n in SEM_OPERADOR_NORM else raw
+            naosucesso_counter[ns_label] += 1
+            raw_por_label_ns[ns_label].add(raw)
+        else:
+            naosucesso_counter['Tentativas de Contato Sem Sucesso'] += 1
+            raw_por_label_ns['Tentativas de Contato Sem Sucesso'].add('(vazio)')
 
-        # Decisor = label preenchido e não está em LABELS_NAO_DECISOR
-        if label and label not in LABELS_NAO_DECISOR:
-            tel_decisor.add(tel)
-
-        # Interessado = label == 'Interessado'
+        # Interessado = label == 'Interessado' (nao alterado por esta mudanca)
         if label == LABEL_INTERESSADO:
             tel_interesse.add(tel)
-
-        # Evolução diária
-        dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
-        if dk not in evolucao:
-            evolucao[dk] = {'date': dt.date(), 'tent': 0, 'conv': 0}
-        evolucao[dk]['tent'] += 1
-        if label == LABEL_INTERESSADO:
-            evolucao[dk]['conv'] += 1
 
     return {
         '_tentativas':    total_tent,
         '_statusCounter': status_counter,
         '_raw_por_label': dict(raw_por_label),
-        '_evolucao':      evolucao,
-        '_tel_decisor':   tel_decisor,
+        '_naosucessoCounter': naosucesso_counter,
+        '_raw_por_label_ns':  dict(raw_por_label_ns),
+        '_decisorCount':  decisor_count,
+        '_evolucao':      {},
         '_tel_interesse': tel_interesse,
+        '_dataMin': data_min, '_dataMax': data_max,
     }
 
 
