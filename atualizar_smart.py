@@ -61,6 +61,16 @@ STATUS_MAP = {}
 MES_PT = {1:'Jan',2:'Fev',3:'Mar',4:'Abr',5:'Mai',6:'Jun',
           7:'Jul',8:'Ago',9:'Set',10:'Out',11:'Nov',12:'Dez'}
 
+# Grafico "Contatos de Sucesso" (aba Smart Factory): tabulacoes brutas (antes do de-para)
+# consideradas sucesso. Comparadas via norm_txt (maiuscula, sem acento).
+SUCESSO_LABELS = ['Enviar E-mail', 'Formulário Preenchido', 'INFORMADO', 'Não tem interesse', 'Retornar']
+
+# Grafico "Tentativas de Contato Sem Sucesso": tabulacoes sem interacao com o operador
+# sao agrupadas sob o rotulo unico "Tentativa"
+SEM_OPERADOR_LABELS = ['Falhou', 'Fora de Area / Cx de Mensagens', 'Ligação Muda',
+                        'Não Atendeu', 'Ocupado', 'Tel Não Atende / Ocupado']
+SEM_OPERADOR_LABEL_CANON = 'Tentativa'
+
 # ═══════════════════════════════════════════════════════════
 # FUNÇÕES AUXILIARES
 # ═══════════════════════════════════════════════════════════
@@ -121,6 +131,9 @@ def norm_txt(s):
     import unicodedata
     b = unicodedata.normalize('NFKD', str(s).strip().upper())
     return ''.join(c for c in b if not unicodedata.combining(c))
+
+SUCESSO_MAP = {norm_txt(s): s for s in SUCESSO_LABELS}
+SEM_OPERADOR_NORM = {norm_txt(s) for s in SEM_OPERADOR_LABELS}
 
 def to_datetime(val):
     if val is None: return None

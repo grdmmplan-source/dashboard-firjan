@@ -149,6 +149,14 @@ SUCESSO_LABEL_OVERRIDE = {
 }
 SUCESSO_MAP = {_norm_status(k): v for k, v in SUCESSO_LABEL_OVERRIDE.items()}
 
+# Grafico "Tentativas de Contato Sem Sucesso": tabulacoes sem interacao com o operador
+# (variantes de grafia/acentuacao) sao agrupadas sob o rotulo unico "Tentativa"
+SEM_OPERADOR_LABELS = ['Tel Não Atende / Ocupado', 'TEL NÃO ATENDE / OCUPADO',
+                        'Fora de Area / Cx de Mensagens', 'FORA DE ÁREA / CX MENSAGENS',
+                        'Ligação Muda']
+SEM_OPERADOR_LABEL_CANON = 'Tentativa'
+SEM_OPERADOR_NORM = {_norm_status(s) for s in SEM_OPERADOR_LABELS}
+
 def calcular_mailing(caminho):
     """Lê o Mailing:
     - Empresas (CNPJs distintos)
@@ -208,8 +216,9 @@ def calcular_mailing(caminho):
             raw_por_label[canon].add(raw)
             decisor_count += 1
         elif raw:
-            naosucesso_counter[raw] += 1
-            raw_por_label_ns[raw].add(raw)
+            ns_label = SEM_OPERADOR_LABEL_CANON if raw_norm in SEM_OPERADOR_NORM else raw
+            naosucesso_counter[ns_label] += 1
+            raw_por_label_ns[ns_label].add(raw)
 
         for di, fi, oi in zip(tent_data_cols, tent_falamos_cols, tent_obs_cols):
             data_val    = to_datetime(row[di])
@@ -277,8 +286,9 @@ def calcular_retorno(caminho):
             raw_por_label[canon].add(raw)
             decisor_count += 1
         elif raw:
-            naosucesso_counter[raw] += 1
-            raw_por_label_ns[raw].add(raw)
+            ns_label = SEM_OPERADOR_LABEL_CANON if raw_norm in SEM_OPERADOR_NORM else raw
+            naosucesso_counter[ns_label] += 1
+            raw_por_label_ns[ns_label].add(raw)
 
         # Interessado = label == 'Interessado' (nao alterado por esta mudanca)
         if sn_label == LABEL_INTERESSADO:
@@ -309,38 +319,41 @@ def combinar_kpis(m, r):
     empresas = m['_empresas']
     tent     = m['_tentativas'] + r['_tentativas']
 
-    # ── Deduplicação por telefone ──────────────────────────
-    # União dos sets → conta cada telefone único apenas 1x
-    tel_decisor_total   = m['_tel_decisor']   | r['_tel_decisor']
+    # Interessados: dedup por telefone (nao alterado por esta mudanca)
     tel_interesse_total = m['_tel_interesse'] | r['_tel_interesse']
-    decisor   = len(tel_decisor_total)
     interesse = len(tel_interesse_total)
+
+    # Decisor ("Contatos de Sucesso") = soma da quantidade de tabulacoes do grafico de sucesso
+    decisor = m['_decisorCount'] + r['_decisorCount']
 
     taxa  = (interesse / decisor * 100) if decisor > 0 else 0
     media = tent / empresas if empresas > 0 else 0
 
-    # Somar status dos dois arquivos
+    # Somar status (sucesso) dos dois arquivos
     status_total = m['_statusCounter'] + r['_statusCounter']
+    naosucesso_total = m['_naosucessoCounter'] + r['_naosucessoCounter']
 
     # Mesclar raw_por_label dos dois arquivos
     raw_merged = defaultdict(set)
     for fonte in (m.get('_raw_por_label', {}), r.get('_raw_por_label', {})):
         for lbl, raws in fonte.items():
             raw_merged[lbl].update(raws)
+    raw_merged_ns = defaultdict(set)
+    for fonte in (m.get('_raw_por_label_ns', {}), r.get('_raw_por_label_ns', {})):
+        for lbl, raws in fonte.items():
+            raw_merged_ns[lbl].update(raws)
 
-    # Mesclar evolução diária dos dois arquivos
-    evo_merged = {}
-    for fonte in (m['_evolucao'], r['_evolucao']):
-        for dk, vals in fonte.items():
-            if dk not in evo_merged:
-                evo_merged[dk] = {'date': vals['date'], 'tent': 0, 'conv': 0}
-            evo_merged[dk]['tent'] += vals['tent']
-            evo_merged[dk]['conv'] += vals['conv']
+    datas = [d for d in (m.get('_dataMin'), m.get('_dataMax'), r.get('_dataMin'), r.get('_dataMax')) if d]
+    data_min, data_max = (min(datas), max(datas)) if datas else (None, None)
+    if data_min and data_max:
+        periodo = f"{data_min.day:02d}/{MES_PT[data_min.month]} — {data_max.day:02d}/{MES_PT[data_max.month]}"
+    else:
+        periodo = ''
 
-    dias_ord = sorted(evo_merged.items(), key=lambda x: x[1]['date'] or datetime(9999,12,31).date())
     st_items = status_total.most_common()
-    # Tooltips: valores brutos que compõem cada label
     st_tooltips = [', '.join(sorted(raw_merged.get(s[0], set()))) for s in st_items]
+    ns_items = naosucesso_total.most_common()
+    ns_tooltips = [', '.join(sorted(raw_merged_ns.get(s[0], set()))) for s in ns_items]
 
     return {
         # Brutos para somar campanhas (todas)
@@ -350,7 +363,7 @@ def combinar_kpis(m, r):
         '_decisor':       decisor,
         '_statusCounter':  status_total,
         '_raw_por_label':  dict(raw_merged),
-        '_evolucao':       evo_merged,
+        '_evolucao':       {},
         # Formatados para o dashboard
         'empresas':      fmt_num(empresas),
         'tentativas':    fmt_num(tent),
@@ -358,12 +371,14 @@ def combinar_kpis(m, r):
         'conversao':     fmt_pct(taxa),
         'decisor':       fmt_num(decisor),
         'media':         fmt_dec(media),
+        'periodo':       periodo,
         'statusLabels':  [s[0] for s in st_items],
         'statusData':    [s[1] for s in st_items],
         'statusTooltips': st_tooltips,
-        'evoLabels':     [d[0] for d in dias_ord],
-        'tentDia':       [d[1]['tent'] for d in dias_ord],
-        'convDia':       [d[1]['conv'] for d in dias_ord],
+        'naosucessoLabels':   [s[0] for s in ns_items],
+        'naosucessoData':     [s[1] for s in ns_items],
+        'naosucessoTooltips': ns_tooltips,
+        'evoLabels':     [], 'tentDia': [], 'convDia': [],
     }
 
 
@@ -445,19 +460,23 @@ def gerar_bloco_retomada(k):
     def js_num_array(lst):
         return '[' + ','.join(str(v) for v in lst) + ']'
 
-    periodo = f"{k['evoLabels'][0]} — {k['evoLabels'][-1]}" if k['evoLabels'] else ''
+    periodo = k.get('periodo', '')
     bloco = f"""  /* RETOMADA_START */
   retomada: {{
     label: '— Retomada da Trilha', desc: 'Campanha Retomada da Trilha — dados filtrados', periodo: '{periodo}',
     empresas: '{k['empresas']}', empresasLabel: '🏢 Empresas na Base',
     mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa',
     tentativas: '{k['tentativas']}', interessados: '{k['interessados']}', conversao: '{k['conversao']}',
-    decisor: '{k['decisor']}', decisorSub: 'Apenas Retomada da Trilha', media: '{k['media']}', trend: '',
+    decisor: '{k['decisor']}', decisorLabel: '👤 Contatos de Sucesso', decisorSub: 'Apenas Retomada da Trilha', media: '{k['media']}', trend: '',
+    distTitle: 'Contatos de Sucesso',
     statusLabels: {js_str_array(k['statusLabels'])},
     statusData: {js_num_array(k['statusData'])}, statusColors:null,
     statusTooltips: {js_str_array(k.get('statusTooltips', ['']*len(k['statusLabels'])))},
-    evolucaoLabels: {js_str_array(k['evoLabels'])},
-    tentDia: {js_num_array(k['tentDia'])}, convDia: {js_num_array(k['convDia'])},
+    evoTitle: 'Tentativas de Contato Sem Sucesso', evoBar: true,
+    naosucessoLabels: {js_str_array(k.get('naosucessoLabels', []))},
+    naosucessoData: {js_num_array(k.get('naosucessoData', []))},
+    naosucessoTooltips: {js_str_array(k.get('naosucessoTooltips', []))},
+    evolucaoLabels: [], tentDia: [], convDia: [],
     showWpp: false,
     wppTitle: 'WhatsApp', wppDesc: '',
     wppKpiLabels: ['📤 Total Enviados','💬 Total Respostas','📊 Taxa de Resposta','🔇 Sem Resposta'],
