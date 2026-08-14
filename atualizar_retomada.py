@@ -129,6 +129,26 @@ def norm_tel(t):
 LABELS_NAO_DECISOR = {'Telefonia', 'Tentativa', 'Engano', 'Alo'}
 LABEL_INTERESSADO  = 'Interessado'
 
+
+def _norm_status(s):
+    import unicodedata
+    b = unicodedata.normalize('NFKD', str(s).strip().lower())
+    return ''.join(c for c in b if not unicodedata.combining(c))
+
+
+# Grafico "Contatos de Sucesso": tabulacoes brutas (antes do de-para) consideradas sucesso.
+# Variantes de grafia/acentuacao sao unificadas no mesmo rotulo canonico.
+SUCESSO_LABEL_OVERRIDE = {
+    'INTERESSADO(A)':      'Interessado',
+    'Interessado':         'Interessado',
+    'JÀ INFORMADO':        'Já Informado',
+    'JÁ INFORMADO':        'Já Informado',
+    'NÃO INTERESSADO(A)':  'Não Interessado',
+    'Não Interessado':     'Não Interessado',
+    'Retornar':            'Retornar',
+}
+SUCESSO_MAP = {_norm_status(k): v for k, v in SUCESSO_LABEL_OVERRIDE.items()}
+
 def calcular_mailing(caminho):
     """Lê o Mailing:
     - Empresas (CNPJs distintos)
@@ -169,47 +189,52 @@ def calcular_mailing(caminho):
     total_tent = 0
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
-    evolucao = {}
-    tel_decisor    = set()
+    naosucesso_counter = Counter()
+    raw_por_label_ns   = defaultdict(set)
+    decisor_count  = 0
     tel_interesse  = set()
+    data_min = data_max = None
 
     for row in rows:
         if row[cnpj_col]: cnpjs.add(row[cnpj_col])
         tel = norm_tel(row[tel_col])
 
         st_raw   = row[status_col]
-        st_label = normalizar_status(st_raw)
-        if st_label:
-            status_counter[st_label] += 1
-            if st_raw: raw_por_label[st_label].add(str(st_raw).strip())
+        raw      = str(st_raw).strip() if st_raw else ''
+        raw_norm = _norm_status(raw) if raw else ''
+        if raw_norm in SUCESSO_MAP:
+            canon = SUCESSO_MAP[raw_norm]
+            status_counter[canon] += 1
+            raw_por_label[canon].add(raw)
+            decisor_count += 1
+        elif raw:
+            naosucesso_counter[raw] += 1
+            raw_por_label_ns[raw].add(raw)
 
         for di, fi, oi in zip(tent_data_cols, tent_falamos_cols, tent_obs_cols):
             data_val    = to_datetime(row[di])
-            falamos_val = row[fi]
             obs_val     = row[oi]
 
             if data_val:
                 total_tent += 1
-                dk = f"{data_val.day:02d}/{MES_PT[data_val.month]}"
-                if dk not in evolucao:
-                    evolucao[dk] = {'date': data_val.date(), 'tent': 0, 'conv': 0}
-                evolucao[dk]['tent'] += 1
+                if data_min is None or data_val < data_min:
+                    data_min = data_val
+                if data_max is None or data_val > data_max:
+                    data_max = data_val
                 if obs_val:
                     obs_str = str(obs_val).strip().lower()
                     if obs_str.startswith('interessado') or obs_str.startswith('interessada'):
                         tel_interesse.add(tel)
-                        evolucao[dk]['conv'] += 1
-
-            if falamos_val and str(falamos_val).strip() not in ('', '*'):
-                tel_decisor.add(tel)
 
     return {
         '_empresas':      len(cnpjs),
         '_tentativas':    total_tent,
         '_statusCounter': status_counter,
         '_raw_por_label': dict(raw_por_label),
-        '_evolucao':      evolucao,
-        '_tel_decisor':   tel_decisor,
+        '_naosucessoCounter': naosucesso_counter,
+        '_raw_por_label_ns':  dict(raw_por_label_ns),
+        '_decisorCount':  decisor_count,
+        '_dataMin': data_min, '_dataMax': data_max,
         '_tel_interesse': tel_interesse,
     }
 
@@ -232,47 +257,50 @@ def calcular_retorno(caminho):
     total_tent = 0
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
-    evolucao = {}
-    tel_decisor   = set()
+    naosucesso_counter = Counter()
+    raw_por_label_ns   = defaultdict(set)
+    decisor_count = 0
     tel_interesse = set()
+    data_min = data_max = None
 
     for row in wb_rows:
         total_tent += 1
         sn_raw   = row[sn_idx]
         sn_label = normalizar_status(sn_raw) if sn_raw else None
         tel      = norm_tel(row[orig_idx])
-        sn_lower = str(sn_raw).strip().lower() if sn_raw else ''
+        raw      = str(sn_raw).strip() if sn_raw else ''
+        raw_norm = _norm_status(raw) if raw else ''
 
-        if sn_label:
-            status_counter[sn_label] += 1
-            if sn_raw: raw_por_label[sn_label].add(str(sn_raw).strip())
+        if raw_norm in SUCESSO_MAP:
+            canon = SUCESSO_MAP[raw_norm]
+            status_counter[canon] += 1
+            raw_por_label[canon].add(raw)
+            decisor_count += 1
+        elif raw:
+            naosucesso_counter[raw] += 1
+            raw_por_label_ns[raw].add(raw)
 
-        # Decisor = label preenchido e não está em LABELS_NAO_DECISOR
-        if sn_label and sn_label not in LABELS_NAO_DECISOR:
-            tel_decisor.add(tel)
-
-        # Interessado = label == 'Interessado'
+        # Interessado = label == 'Interessado' (nao alterado por esta mudanca)
         if sn_label == LABEL_INTERESSADO:
             tel_interesse.add(tel)
 
         dt = row[data_idx]
         if not isinstance(dt, datetime): dt = to_datetime(dt)
         if dt:
-            dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
-            if dk not in evolucao:
-                evolucao[dk] = {'date': dt.date(), 'tent': 0, 'conv': 0}
-            evolucao[dk]['tent'] += 1
-            if sn_label == LABEL_INTERESSADO:
-                tel_interesse.add(tel)
-                evolucao[dk]['conv'] += 1
+            if data_min is None or dt < data_min:
+                data_min = dt
+            if data_max is None or dt > data_max:
+                data_max = dt
 
     return {
         '_tentativas':    total_tent,
         '_statusCounter': status_counter,
         '_raw_por_label': dict(raw_por_label),
-        '_evolucao':      evolucao,
-        '_tel_decisor':   tel_decisor,
+        '_naosucessoCounter': naosucesso_counter,
+        '_raw_por_label_ns':  dict(raw_por_label_ns),
+        '_decisorCount':  decisor_count,
         '_tel_interesse': tel_interesse,
+        '_dataMin': data_min, '_dataMax': data_max,
     }
 
 

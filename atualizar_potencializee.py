@@ -53,6 +53,12 @@ INSUCESSO_LABELS = ['Falhou', 'Fora de Area / Cx de Mensagens', 'Ligação Muda'
                      'Não Atendeu', 'Ocupado', 'Tel Não Atende / Ocupado',
                      'Atendido', 'Engano', 'Cliente Desligou']
 
+# Grafico "Tentativas de Contato Sem Sucesso": tabulacoes sem interacao com o operador
+# (sem resposta humana) sao agrupadas sob o rotulo unico "Tentativa"
+SEM_OPERADOR_LABELS = ['Atendido', 'Não Atendeu', 'Tel Não Atende / Ocupado',
+                        'Fora de Area / Cx de Mensagens', 'Ligação Muda', 'Ocupado', 'Falhou']
+SEM_OPERADOR_LABEL_CANON = 'Tentativa'
+
 
 def _norm_status(s):
     import unicodedata
@@ -63,6 +69,7 @@ def _norm_status(s):
 CPC_MAP = {_norm_status(s): CPC_LABEL_OVERRIDE.get(s, s) for s in CPC_LABELS}
 INSUCESSO_MAP = {_norm_status(s): s for s in INSUCESSO_LABELS}
 INTERESSADO_RAW_NORM = {_norm_status(s) for s in INTERESSADO_RAW_LABELS}
+SEM_OPERADOR_NORM = {_norm_status(s) for s in SEM_OPERADOR_LABELS}
 
 MES_PT = {1:'Jan',2:'Fev',3:'Mar',4:'Abr',5:'Mai',6:'Jun',
           7:'Jul',8:'Ago',9:'Set',10:'Out',11:'Nov',12:'Dez'}
@@ -243,7 +250,12 @@ def calcular_discagem(caminho):
             raw_por_label[canon].add(raw)
             decisor_count += 1
         else:
-            ns_label = raw if raw else 'Tentativas de Contato Sem Sucesso'
+            if not raw:
+                ns_label = 'Tentativas de Contato Sem Sucesso'
+            elif raw_norm in SEM_OPERADOR_NORM:
+                ns_label = SEM_OPERADOR_LABEL_CANON
+            else:
+                ns_label = raw
             naosucesso_counter[ns_label] += 1
             raw_por_label_ns[ns_label].add(raw if raw else '(vazio)')
         if raw_norm in INTERESSADO_RAW_NORM:
