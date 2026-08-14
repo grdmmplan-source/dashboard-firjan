@@ -39,6 +39,24 @@ LABEL_INTERESSADO  = 'Interessado'
 MES_PT = {1:'Jan',2:'Fev',3:'Mar',4:'Abr',5:'Mai',6:'Jun',
           7:'Jul',8:'Ago',9:'Set',10:'Out',11:'Nov',12:'Dez'}
 
+def norm_txt(s):
+    """Maiuscula, sem acento - para comparar tabulacoes brutas."""
+    import unicodedata
+    b = unicodedata.normalize('NFKD', str(s).strip().upper())
+    return ''.join(c for c in b if not unicodedata.combining(c))
+
+# Grafico "Contatos de Sucesso" (visao Por Status): tabulacoes brutas (antes do de-para)
+# consideradas sucesso. Comparadas via norm_txt.
+SUCESSO_LABELS = ['JÁ INSCRITO', 'MATRÍCULA ONLINE', 'Não tem interesse', 'RETORNAR', 'INTERESSADO']
+SUCESSO_MAP = {norm_txt(s): s for s in SUCESSO_LABELS}
+
+# Grafico "Tentativas de Contato Sem Sucesso": tabulacoes sem interacao com o operador
+# sao agrupadas sob o rotulo unico "Tentativa"
+SEM_OPERADOR_LABELS = ['Atendido', 'FORA DE ÁREA / CX MENSAGENS', 'Ligação Muda',
+                        'Não Atendeu', 'Ocupado', 'TEL NÃO ATENDE / OCUPADO']
+SEM_OPERADOR_LABEL_CANON = 'Tentativa'
+SEM_OPERADOR_NORM = {norm_txt(s) for s in SEM_OPERADOR_LABELS}
+
 
 # ═══════════════════════════════════════════════════════════
 # FUNÇÕES AUXILIARES
@@ -182,9 +200,11 @@ def calcular_discagem(caminho):
     total_tent = 0
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
-    evolucao = {}
-    tel_decisor   = set()
+    naosucesso_counter = Counter()
+    raw_por_label_ns   = defaultdict(set)
+    decisor_count = 0
     tel_interesse = set()
+    data_min = data_max = None
 
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i == 0:
@@ -193,6 +213,10 @@ def calcular_discagem(caminho):
         if not dt:
             continue
         total_tent += 1
+        if data_min is None or dt < data_min:
+            data_min = dt
+        if data_max is None or dt > data_max:
+            data_max = dt
 
         tipo = str(row[tipo_idx]).strip().upper() if len(row) > tipo_idx and row[tipo_idx] else ''
         if tipo == 'DISCADOR':
@@ -205,45 +229,48 @@ def calcular_discagem(caminho):
         sn_raw = row[sn_idx] if len(row) > sn_idx else None
         st_raw = row[st_idx] if len(row) > st_idx else None
         raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
+        raw_n  = norm_txt(raw) if raw else ''
         label  = normalizar_status(raw) if raw else None
 
-        if label:
-            status_counter[label] += 1
-            if raw:
-                raw_por_label[label].add(raw)
+        if raw_n in SUCESSO_MAP:
+            canon = SUCESSO_MAP[raw_n]
+            status_counter[canon] += 1
+            raw_por_label[canon].add(raw)
+            decisor_count += 1
+        elif raw:
+            ns_label = SEM_OPERADOR_LABEL_CANON if raw_n in SEM_OPERADOR_NORM else raw
+            naosucesso_counter[ns_label] += 1
+            raw_por_label_ns[ns_label].add(raw)
+        else:
+            naosucesso_counter['Tentativas de Contato Sem Sucesso'] += 1
+            raw_por_label_ns['Tentativas de Contato Sem Sucesso'].add('(vazio)')
 
-        if label and label not in LABELS_NAO_DECISOR:
-            tel_decisor.add(tel)
+        # Interessado = label == 'Interessado' (nao alterado por esta mudanca)
         if label == LABEL_INTERESSADO:
             tel_interesse.add(tel)
 
-        dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
-        if dk not in evolucao:
-            evolucao[dk] = {'date': dt.date(), 'tent': 0, 'conv': 0}
-        evolucao[dk]['tent'] += 1
-        if label == LABEL_INTERESSADO:
-            evolucao[dk]['conv'] += 1
-
     wb.close()
 
-    dias_ord = sorted(evolucao.items(), key=lambda x: x[1]['date'])
     st_items = status_counter.most_common()
     st_tooltips = [', '.join(sorted(raw_por_label.get(s[0], set()))) for s in st_items]
+    ns_items = naosucesso_counter.most_common()
+    ns_tooltips = [', '.join(sorted(raw_por_label_ns.get(s[0], set()))) for s in ns_items]
 
     print(f'  Total Tentativas: {total_tent}')
-    print(f'  Decisor: {len(tel_decisor)} | Interessados: {len(tel_interesse)}')
+    print(f'  Decisor: {decisor_count} | Interessados: {len(tel_interesse)}')
     print(f'  Status: {dict(st_items[:5])} ...')
 
     return {
         'tentativas':    total_tent,
-        'decisor':       len(tel_decisor),
+        'decisor':       decisor_count,
         'interessados':  len(tel_interesse),
+        'naosucessoLabels':   [s[0] for s in ns_items],
+        'naosucessoData':     [s[1] for s in ns_items],
+        'naosucessoTooltips': ns_tooltips,
+        'dataMin': data_min, 'dataMax': data_max,
         'statusLabels':  [s[0] for s in st_items],
         'statusData':    [s[1] for s in st_items],
         'statusTooltips': st_tooltips,
-        'evoLabels':     [d[0] for d in dias_ord],
-        'tentDia':       [d[1]['tent'] for d in dias_ord],
-        'convDia':       [d[1]['conv'] for d in dias_ord],
     }
 
 
@@ -267,12 +294,15 @@ def gerar_bloco(base, disc):
     taxa     = (interess / decisor * 100) if decisor > 0 else 0
     media    = (tent / clientes) if clientes > 0 else 0
 
-    periodo = f"{disc['evoLabels'][0]} — {disc['evoLabels'][-1]}" if disc['evoLabels'] else ''
+    if disc.get('dataMin') and disc.get('dataMax'):
+        dmin, dmax = disc['dataMin'], disc['dataMax']
+        periodo = f"{dmin.day:02d}/{MES_PT[dmin.month]} — {dmax.day:02d}/{MES_PT[dmax.month]}"
+    else:
+        periodo = ''
     status_labels = disc['statusLabels'] or ['Sem dados']
     status_data   = disc['statusData'] or [0]
-    evo_labels    = disc['evoLabels'] or ['--']
-    tent_dia      = disc['tentDia'] or [0]
-    conv_dia      = disc['convDia'] or [0]
+    ns_labels     = disc['naosucessoLabels'] or ['Sem dados']
+    ns_data       = disc['naosucessoData'] or [0]
 
     return f"""  /* COLONIA_INVERNO_START */
   colonia_inverno: {{
@@ -280,11 +310,14 @@ def gerar_bloco(base, disc):
     empresas: '{fmt_num(clientes)}', empresasLabel: '🧒 Cliente na Base',
     mediaLabel: '🔁 Média Tentativas/Cliente', mediaSub: 'por cliente',
     tentativas: '{fmt_num(tent)}', interessados: '{fmt_num(interess)}', conversao: '{fmt_pct(taxa)}',
-    decisor: '{fmt_num(decisor)}', decisorSub: 'Apenas Colônia Inverno 2026', media: '{fmt_dec(media)}', trend: '',
+    decisor: '{fmt_num(decisor)}', decisorLabel: '👤 Contatos de Sucesso', decisorSub: 'Apenas Colônia Inverno 2026', media: '{fmt_dec(media)}', trend: '',
+    distTitle: 'Contatos de Sucesso',
     statusLabels: {js_str(status_labels)}, statusData: {js_num(status_data)}, statusColors:null,
     statusTooltips: {js_str(disc['statusTooltips'])},
-    evolucaoLabels: {js_str(evo_labels)},
-    tentDia: {js_num(tent_dia)}, convDia: {js_num(conv_dia)},
+    evoTitle: 'Tentativas de Contato Sem Sucesso', evoBar: true,
+    naosucessoLabels: {js_str(ns_labels)}, naosucessoData: {js_num(ns_data)},
+    naosucessoTooltips: {js_str(disc['naosucessoTooltips'])},
+    evolucaoLabels: [], tentDia: [], convDia: [],
     showWpp: false,
     wppTitle: '', wppDesc: '',
     wppKpiLabels: [], wppListLabels: [], wppPieLabels: [],

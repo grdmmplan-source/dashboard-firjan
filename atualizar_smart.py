@@ -457,15 +457,20 @@ def combinar_smart(m, r, w=None):
     """Combina Mailing + Retorno Smart Factory (+ WhatsApp opcional)."""
     empresas  = m['_empresas']
     tent      = r['_tentativas']
-    decisor   = len(r['_tel_decisor'])
+    decisor   = r['_decisorCount']
     interesse = len(r['_tel_interesse'])
     taxa  = (interesse / decisor * 100) if decisor > 0 else 0
     media = tent / empresas if empresas > 0 else 0
 
-    dias_ord = sorted(r['_evolucao'].items(), key=lambda x: x[1]['date'] or datetime(9999,12,31).date())
     st_items = r['_statusCounter'].most_common()
     rpl      = r.get('_raw_por_label', {})
     st_tooltips = [', '.join(sorted(rpl.get(s[0], set()))) for s in st_items]
+    ns_items = r['_naosucessoCounter'].most_common()
+    rpl_ns   = r.get('_raw_por_label_ns', {})
+    ns_tooltips = [', '.join(sorted(rpl_ns.get(s[0], set()))) for s in ns_items]
+
+    dmin, dmax = r.get('_dataMin'), r.get('_dataMax')
+    periodo = f"{dmin.day:02d}/{MES_PT[dmin.month]} — {dmax.day:02d}/{MES_PT[dmax.month]}" if dmin and dmax else ''
 
     # WhatsApp
     show_wpp  = w is not None
@@ -494,9 +499,11 @@ def combinar_smart(m, r, w=None):
         'statusLabels':  [s[0] for s in st_items],
         'statusData':    [s[1] for s in st_items],
         'statusTooltips': st_tooltips,
-        'evoLabels':     [d[0] for d in dias_ord],
-        'tentDia':       [d[1]['tent'] for d in dias_ord],
-        'convDia':       [d[1]['conv'] for d in dias_ord],
+        'naosucessoLabels':   [s[0] for s in ns_items],
+        'naosucessoData':     [s[1] for s in ns_items],
+        'naosucessoTooltips': ns_tooltips,
+        'periodo':       periodo,
+        'evoLabels': [], 'tentDia': [], 'convDia': [],
         'showWpp':       show_wpp,
         'wppEnv':        wpp_env,
         'wppResp':       wpp_resp,
@@ -562,19 +569,23 @@ def gerar_bloco_smart(k):
     show_wpp  = 'true' if k.get('showWpp') else 'false'
     wpp_pie   = js_num(k.get('wppPie', [0, 1]))
 
-    periodo = f"{k['evoLabels'][0]} — {k['evoLabels'][-1]}" if k['evoLabels'] else ''
+    periodo = k.get('periodo', '')
     return f"""  /* SMART_START */
   smart: {{
     label: '— Smart Factory', desc: 'Campanha Smart Factory — dados filtrados', periodo: '{periodo}',
     empresas: '{k['empresas']}', empresasLabel: '🏢 Empresas na Base',
     mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa',
     tentativas: '{k['tentativas']}', interessados: '{k['interessados']}', conversao: '{k['conversao']}',
-    decisor: '{k['decisor']}', decisorSub: 'Apenas Smart Factory', media: '{k['media']}', trend: '',
+    decisor: '{k['decisor']}', decisorLabel: '👤 Contatos de Sucesso', decisorSub: 'Apenas Smart Factory', media: '{k['media']}', trend: '',
+    distTitle: 'Contatos de Sucesso',
     statusLabels: {js_str(k['statusLabels'])},
     statusData: {js_num(k['statusData'])}, statusColors:null,
     statusTooltips: {js_str(k.get('statusTooltips', ['']*len(k['statusLabels'])))},
-    evolucaoLabels: {js_str(k['evoLabels'])},
-    tentDia: {js_num(k['tentDia'])}, convDia: {js_num(k['convDia'])},
+    evoTitle: 'Tentativas de Contato Sem Sucesso', evoBar: true,
+    naosucessoLabels: {js_str(k.get('naosucessoLabels', []))},
+    naosucessoData: {js_num(k.get('naosucessoData', []))},
+    naosucessoTooltips: {js_str(k.get('naosucessoTooltips', []))},
+    evolucaoLabels: [], tentDia: [], convDia: [],
     showWpp: {show_wpp},
     wppTitle: 'WhatsApp — Smart Factory',
     wppDesc: 'Ações massivas exclusivas da campanha Smart Factory',

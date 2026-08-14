@@ -27,6 +27,23 @@ STATUS_MAP = {}
 MES_PT = {1:'Jan',2:'Fev',3:'Mar',4:'Abr',5:'Mai',6:'Jun',
           7:'Jul',8:'Ago',9:'Set',10:'Out',11:'Nov',12:'Dez'}
 
+def norm_txt(s):
+    """Maiuscula, sem acento - para comparar tabulacoes brutas."""
+    import unicodedata
+    b = unicodedata.normalize('NFKD', str(s).strip().upper())
+    return ''.join(c for c in b if not unicodedata.combining(c))
+
+# Grafico "Contatos de Sucesso" (aba Cursos Tecnicos Niteroi): tabulacoes brutas
+# (antes do de-para) consideradas sucesso. Comparadas via norm_txt.
+SUCESSO_LABELS = ['INFORMADO', 'JA INSCRITO', 'NAO INTERESSADO', 'Não tem interesse', 'INTERESSADO']
+SUCESSO_MAP = {norm_txt(s): s for s in SUCESSO_LABELS}
+
+# Grafico "Tentativas de Contato Sem Sucesso": tabulacoes sem interacao com o operador
+# sao agrupadas sob o rotulo unico "Tentativa"
+SEM_OPERADOR_LABELS = ['Falhou', 'Ligação Muda', 'Não Atendeu', 'Ocupado', 'Atendido']
+SEM_OPERADOR_LABEL_CANON = 'Tentativa'
+SEM_OPERADOR_NORM = {norm_txt(s) for s in SEM_OPERADOR_LABELS}
+
 # ═══════════════════════════════════════════════════════════
 # AUXILIARES
 # ═══════════════════════════════════════════════════════════
@@ -118,15 +135,21 @@ def calcular_retorno_niteroi(caminho, aba):
     total_tent     = 0
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
-    evolucao       = {}
-    tel_decisor    = set()
+    naosucesso_counter = Counter()
+    raw_por_label_ns   = defaultdict(set)
+    decisor_count  = 0
     tel_interesse  = set()
+    data_min = data_max = None
 
     for row in wb_rows:
         dt = to_datetime(row[data_idx])
         if not dt: continue
 
         total_tent += 1
+        if data_min is None or dt < data_min:
+            data_min = dt
+        if data_max is None or dt > data_max:
+            data_max = dt
 
         orig_norm = norm_tel(row[orig_idx])
         tel = norm_tel(row[dest_idx]) if orig_norm == NOSSO_NUMERO else orig_norm
@@ -134,32 +157,36 @@ def calcular_retorno_niteroi(caminho, aba):
         sn_raw = row[sn_idx]
         st_raw = row[st_idx]
         raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
+        raw_n  = norm_txt(raw) if raw else ''
         label  = normalizar_status(raw) if raw else None
 
-        if label:
-            status_counter[label] += 1
-            if raw: raw_por_label[label].add(raw)
+        if raw_n in SUCESSO_MAP:
+            canon = SUCESSO_MAP[raw_n]
+            status_counter[canon] += 1
+            raw_por_label[canon].add(raw)
+            decisor_count += 1
+        elif raw:
+            ns_label = SEM_OPERADOR_LABEL_CANON if raw_n in SEM_OPERADOR_NORM else raw
+            naosucesso_counter[ns_label] += 1
+            raw_por_label_ns[ns_label].add(raw)
+        else:
+            naosucesso_counter['Tentativas de Contato Sem Sucesso'] += 1
+            raw_por_label_ns['Tentativas de Contato Sem Sucesso'].add('(vazio)')
 
-        if label and label not in LABELS_NAO_DECISOR:
-            tel_decisor.add(tel)
-
+        # Interessado = label == 'Interessado' (nao alterado por esta mudanca)
         if label == LABEL_INTERESSADO:
             tel_interesse.add(tel)
-
-        dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
-        if dk not in evolucao:
-            evolucao[dk] = {'date': dt.date(), 'tent': 0, 'conv': 0}
-        evolucao[dk]['tent'] += 1
-        if label == LABEL_INTERESSADO:
-            evolucao[dk]['conv'] += 1
 
     return {
         '_tentativas':    total_tent,
         '_statusCounter': status_counter,
         '_raw_por_label': dict(raw_por_label),
-        '_evolucao':      evolucao,
-        '_tel_decisor':   tel_decisor,
+        '_naosucessoCounter': naosucesso_counter,
+        '_raw_por_label_ns':  dict(raw_por_label_ns),
+        '_decisorCount':  decisor_count,
+        '_evolucao':      {},
         '_tel_interesse': tel_interesse,
+        '_dataMin': data_min, '_dataMax': data_max,
     }
 
 
@@ -200,7 +227,7 @@ def combinar_niteroi(m, r, w=None):
     Status, tentativas e evolução vêm exclusivamente do Retorno."""
     inscricoes = m['_inscricoes']
     tent       = r['_tentativas']
-    decisor    = len(r['_tel_decisor'])
+    decisor    = r['_decisorCount']
     interesse  = len(r['_tel_interesse'])
     taxa  = (interesse / decisor * 100) if decisor > 0 else 0
     media = tent / inscricoes if inscricoes > 0 else 0
@@ -208,8 +235,12 @@ def combinar_niteroi(m, r, w=None):
     st_items = r['_statusCounter'].most_common()
     rpl      = r.get('_raw_por_label', {})
     st_tooltips = [', '.join(sorted(rpl.get(s[0], set()))) for s in st_items]
+    ns_items = r['_naosucessoCounter'].most_common()
+    rpl_ns   = r.get('_raw_por_label_ns', {})
+    ns_tooltips = [', '.join(sorted(rpl_ns.get(s[0], set()))) for s in ns_items]
 
-    dias_ord = sorted(r['_evolucao'].items(), key=lambda x: x[1]['date'] or datetime(9999,12,31).date())
+    dmin, dmax = r.get('_dataMin'), r.get('_dataMax')
+    periodo = f"{dmin.day:02d}/{MES_PT[dmin.month]} — {dmax.day:02d}/{MES_PT[dmax.month]}" if dmin and dmax else ''
 
     show_wpp  = w is not None
     wpp_env   = fmt_num(w['_wpp_total'])     if w else '-'
@@ -240,9 +271,11 @@ def combinar_niteroi(m, r, w=None):
         'statusLabels':   [s[0] for s in st_items],
         'statusData':     [s[1] for s in st_items],
         'statusTooltips': st_tooltips,
-        'evoLabels':      [d[0] for d in dias_ord],
-        'tentDia':        [d[1]['tent'] for d in dias_ord],
-        'convDia':        [d[1]['conv'] for d in dias_ord],
+        'naosucessoLabels':   [s[0] for s in ns_items],
+        'naosucessoData':     [s[1] for s in ns_items],
+        'naosucessoTooltips': ns_tooltips,
+        'periodo':        periodo,
+        'evoLabels': [], 'tentDia': [], 'convDia': [],
         'showWpp':       show_wpp,
         'wppEnv':        wpp_env,
         'wppResp':       wpp_resp,
@@ -275,19 +308,23 @@ def gerar_bloco_niteroi(k):
     show_wpp = 'true' if k.get('showWpp') else 'false'
     wpp_pie  = js_num(k.get('wppPie', [0, 1]))
 
-    periodo = f"{k['evoLabels'][0]} — {k['evoLabels'][-1]}" if k['evoLabels'] else ''
+    periodo = k.get('periodo', '')
     return f"""  /* NITEROI_START */
   niteroi: {{
     label: '— Cursos Técnicos Niterói', desc: 'Campanha Cursos Técnicos Niterói — dados filtrados', periodo: '{periodo}',
     empresas: '{k['inscricoes']}', empresasLabel: '📋 CPFs Inscritos',
     mediaLabel: '🔁 Média Tentativas/Inscrição', mediaSub: 'por inscrição',
     tentativas: '{k['tentativas']}', interessados: '{k['interessados']}', conversao: '{k['conversao']}',
-    decisor: '{k['decisor']}', decisorSub: 'Apenas Cursos Técnicos Niterói', media: '{k['media']}', trend: '',
+    decisor: '{k['decisor']}', decisorLabel: '👤 Contatos de Sucesso', decisorSub: 'Apenas Cursos Técnicos Niterói', media: '{k['media']}', trend: '',
+    distTitle: 'Contatos de Sucesso',
     statusLabels: {js_str(k['statusLabels'])},
     statusData: {js_num(k['statusData'])}, statusColors:null,
     statusTooltips: {js_str(k.get('statusTooltips', ['']*len(k['statusLabels'])))},
-    evolucaoLabels: {js_str(k['evoLabels'])},
-    tentDia: {js_num(k['tentDia'])}, convDia: {js_num(k['convDia'])},
+    evoTitle: 'Tentativas de Contato Sem Sucesso', evoBar: true,
+    naosucessoLabels: {js_str(k.get('naosucessoLabels', []))},
+    naosucessoData: {js_num(k.get('naosucessoData', []))},
+    naosucessoTooltips: {js_str(k.get('naosucessoTooltips', []))},
+    evolucaoLabels: [], tentDia: [], convDia: [],
     showWpp: {show_wpp},
     wppTitle: 'WhatsApp — Cursos Técnicos Niterói',
     wppDesc: 'Disparos massivos da campanha Cursos Técnicos Niterói',

@@ -113,9 +113,19 @@ def norm_txt(s):
 
 
 # Tabulacoes brutas (antes do de-para) usadas nos cards especificos da IEL
-TAB_CONTATADAS  = {'INTERESSADO', 'NAO INTERESSADO', 'INFORMACOES POR E-MAIL', 'CLIENTE DESLIGOU'}
 TAB_EFETIVOS    = {'INTERESSADO', 'INFORMACOES POR E-MAIL'}
 TAB_DPMEN       = {'INFORMACOES POR E-MAIL'}
+
+# Grafico "Contatos de Sucesso": tabulacoes brutas (antes do de-para) consideradas sucesso.
+SUCESSO_LABELS = ['INFORMAÇÕES POR E-MAIL', 'NAO INTERESSADO', 'Retornar', 'INTERESSADO']
+SUCESSO_MAP = {norm_txt(s): s for s in SUCESSO_LABELS}
+
+# Grafico "Tentativas de Contato Sem Sucesso": tabulacoes sem interacao com o operador
+# sao agrupadas sob o rotulo unico "Tentativa"
+SEM_OPERADOR_LABELS = ['Falhou', 'Fora de Area / Cx de Mensagens', 'Ligação Muda',
+                        'Não Atendeu', 'Ocupado', 'Tel Não Atende / Ocupado', 'Atendido']
+SEM_OPERADOR_LABEL_CANON = 'Tentativa'
+SEM_OPERADOR_NORM = {norm_txt(s) for s in SEM_OPERADOR_LABELS}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -185,11 +195,13 @@ def calcular_discagem(caminho):
     total_tent = 0
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
-    evolucao = {}
+    naosucesso_counter = Counter()
+    raw_por_label_ns   = defaultdict(set)
+    decisor_count = 0
     tel_interesse    = set()
-    emp_contatadas   = set()  # empresas: INTERESSADO, NAO INTERESSADO, INFORMACOES POR E-MAIL, CLIENTE DESLIGOU
     emp_efetivos     = set()  # empresas: INTERESSADO, INFORMACOES POR E-MAIL
     emp_dpmen        = set()  # empresas: INFORMACOES POR E-MAIL
+    data_min = data_max = None
 
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i == 0:
@@ -198,6 +210,10 @@ def calcular_discagem(caminho):
         if not dt:
             continue
         total_tent += 1
+        if data_min is None or dt < data_min:
+            data_min = dt
+        if data_max is None or dt > data_max:
+            data_max = dt
 
         tipo = str(row[tipo_idx]).strip().upper() if len(row) > tipo_idx and row[tipo_idx] else ''
         if tipo == 'DISCADOR':
@@ -215,13 +231,19 @@ def calcular_discagem(caminho):
         label  = normalizar_status(raw) if raw else None
         rawn   = norm_txt(raw) if raw else ''
 
-        if label:
-            status_counter[label] += 1
-            if raw:
-                raw_por_label[label].add(raw)
+        if rawn in SUCESSO_MAP:
+            canon = SUCESSO_MAP[rawn]
+            status_counter[canon] += 1
+            raw_por_label[canon].add(raw)
+            decisor_count += 1
+        elif raw:
+            ns_label = SEM_OPERADOR_LABEL_CANON if rawn in SEM_OPERADOR_NORM else raw
+            naosucesso_counter[ns_label] += 1
+            raw_por_label_ns[ns_label].add(raw)
+        else:
+            naosucesso_counter['Tentativas de Contato Sem Sucesso'] += 1
+            raw_por_label_ns['Tentativas de Contato Sem Sucesso'].add('(vazio)')
 
-        if rawn in TAB_CONTATADAS:
-            emp_contatadas.add(empresa_id)
         if rawn in TAB_EFETIVOS:
             emp_efetivos.add(empresa_id)
         if rawn in TAB_DPMEN:
@@ -229,36 +251,31 @@ def calcular_discagem(caminho):
         if label == LABEL_INTERESSADO:
             tel_interesse.add(tel)
 
-        dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
-        if dk not in evolucao:
-            evolucao[dk] = {'date': dt.date(), 'tent': 0, 'conv': 0}
-        evolucao[dk]['tent'] += 1
-        if label == LABEL_INTERESSADO:
-            evolucao[dk]['conv'] += 1
-
     wb.close()
 
-    dias_ord = sorted(evolucao.items(), key=lambda x: x[1]['date'])
     st_items = status_counter.most_common()
     st_tooltips = [', '.join(sorted(raw_por_label.get(s[0], set()))) for s in st_items]
+    ns_items = naosucesso_counter.most_common()
+    ns_tooltips = [', '.join(sorted(raw_por_label_ns.get(s[0], set()))) for s in ns_items]
 
     print(f'  Total Tentativas: {total_tent}')
-    print(f'  Empresas contatadas: {len(emp_contatadas)} | Interessados: {len(tel_interesse)}')
+    print(f'  Contatos de Sucesso: {decisor_count} | Interessados: {len(tel_interesse)}')
     print(f'  Contatos efetivos: {len(emp_efetivos)} | Leads DPMEN: {len(emp_dpmen)}')
     print(f'  Status: {dict(st_items[:5])} ...')
 
     return {
         'tentativas':    total_tent,
-        'decisor':       len(emp_contatadas),
+        'decisor':       decisor_count,
         'interessados':  len(tel_interesse),
+        'naosucessoLabels':   [s[0] for s in ns_items],
+        'naosucessoData':     [s[1] for s in ns_items],
+        'naosucessoTooltips': ns_tooltips,
+        'dataMin': data_min, 'dataMax': data_max,
         'efetivos':      len(emp_efetivos),
         'dpmen':         len(emp_dpmen),
         'statusLabels':  [s[0] for s in st_items],
         'statusData':    [s[1] for s in st_items],
         'statusTooltips': st_tooltips,
-        'evoLabels':     [d[0] for d in dias_ord],
-        'tentDia':       [d[1]['tent'] for d in dias_ord],
-        'convDia':       [d[1]['conv'] for d in dias_ord],
     }
 
 
@@ -285,12 +302,15 @@ def gerar_bloco(base, disc):
     media    = (tent / empresas) if empresas > 0 else 0
     taxa_interesse = (interess / decisor * 100) if decisor > 0 else 0
 
-    periodo = f"{disc['evoLabels'][0]} — {disc['evoLabels'][-1]}" if disc['evoLabels'] else ''
+    if disc.get('dataMin') and disc.get('dataMax'):
+        dmin, dmax = disc['dataMin'], disc['dataMax']
+        periodo = f"{dmin.day:02d}/{MES_PT[dmin.month]} — {dmax.day:02d}/{MES_PT[dmax.month]}"
+    else:
+        periodo = ''
     status_labels = disc['statusLabels'] or ['Sem dados']
     status_data   = disc['statusData'] or [0]
-    evo_labels    = disc['evoLabels'] or ['--']
-    tent_dia      = disc['tentDia'] or [0]
-    conv_dia      = disc['convDia'] or [0]
+    ns_labels     = disc['naosucessoLabels'] or ['Sem dados']
+    ns_data       = disc['naosucessoData'] or [0]
 
     return f"""  /* IEL_START */
   iel: {{
@@ -298,11 +318,14 @@ def gerar_bloco(base, disc):
     empresas: '{fmt_num(empresas)}', empresasLabel: '🏢 Empresas na Base',
     mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa',
     tentativas: '{fmt_num(tent)}', interessados: '{fmt_num(interess)}', conversao: '{fmt_pct(taxa)}',
-    decisor: '{fmt_num(decisor)}', decisorLabel: '📋 Empresas Contatadas', decisorSub: 'Apenas Prospecção IEL', media: '{fmt_dec(media)}', trend: '',
+    decisor: '{fmt_num(decisor)}', decisorLabel: '👤 Contatos de Sucesso', decisorSub: 'Apenas Prospecção IEL', media: '{fmt_dec(media)}', trend: '',
+    distTitle: 'Contatos de Sucesso',
     statusLabels: {js_str(status_labels)}, statusData: {js_num(status_data)}, statusColors:null,
     statusTooltips: {js_str(disc['statusTooltips'])},
-    evolucaoLabels: {js_str(evo_labels)},
-    tentDia: {js_num(tent_dia)}, convDia: {js_num(conv_dia)},
+    evoTitle: 'Tentativas de Contato Sem Sucesso', evoBar: true,
+    naosucessoLabels: {js_str(ns_labels)}, naosucessoData: {js_num(ns_data)},
+    naosucessoTooltips: {js_str(disc['naosucessoTooltips'])},
+    evolucaoLabels: [], tentDia: [], convDia: [],
     showWpp: false,
     wppTitle: '', wppDesc: '',
     wppKpiLabels: [], wppListLabels: [], wppPieLabels: [],
