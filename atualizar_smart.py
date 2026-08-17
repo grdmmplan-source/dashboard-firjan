@@ -53,9 +53,6 @@ LABEL_INTERESSADO  = 'Interessado'
 # Agendamentos: status (raw, nao esta no de-para) que indica agendamento concluido
 LABEL_AGENDADO = 'Agendamento Realizado'
 
-# Agendamentos: tabulacoes brutas (antes do de-para) que contam como "Contatos com Decisor"
-TAB_AGEND_DECISOR = {'AGENDAMENTO REALIZADO', 'NAO INTERESSADO', 'INTERESSADO', 'CLIENTE DESLIGOU'}
-
 STATUS_MAP = {}
 
 MES_PT = {1:'Jan',2:'Fev',3:'Mar',4:'Abr',5:'Mai',6:'Jun',
@@ -70,6 +67,16 @@ SUCESSO_LABELS = ['Enviar E-mail', 'Formulário Preenchido', 'INFORMADO', 'Não 
 SEM_OPERADOR_LABELS = ['Falhou', 'Fora de Area / Cx de Mensagens', 'Ligação Muda',
                         'Não Atendeu', 'Ocupado', 'Tel Não Atende / Ocupado']
 SEM_OPERADOR_LABEL_CANON = 'Tentativa'
+
+# Grafico "Contatos de Sucesso" (aba Smart Factory - Agendamentos): tabulacoes brutas
+# (antes do de-para) consideradas sucesso.
+AGEND_SUCESSO_LABELS = ['Agendamento Realizado', 'NAO INTERESSADO', 'Retornar', 'INTERESSADO']
+
+# Grafico "Tentativas de Contato Sem Sucesso" (Agendamentos): tabulacoes sem interacao
+# com o operador sao agrupadas sob o rotulo unico "Tentativa"
+AGEND_SEM_OPERADOR_LABELS = ['Falhou', 'Fora de Area / Cx de Mensagens', 'Ligação Muda',
+                              'Não Atendeu', 'Ocupado', 'Tel Não Atende / Ocupado', 'Atendido']
+AGEND_SEM_OPERADOR_LABEL_CANON = 'Tentativa'
 
 # ═══════════════════════════════════════════════════════════
 # FUNÇÕES AUXILIARES
@@ -134,6 +141,8 @@ def norm_txt(s):
 
 SUCESSO_MAP = {norm_txt(s): s for s in SUCESSO_LABELS}
 SEM_OPERADOR_NORM = {norm_txt(s) for s in SEM_OPERADOR_LABELS}
+AGEND_SUCESSO_MAP = {norm_txt(s): s for s in AGEND_SUCESSO_LABELS}
+AGEND_SEM_OPERADOR_NORM = {norm_txt(s) for s in AGEND_SEM_OPERADOR_LABELS}
 
 def to_datetime(val):
     if val is None: return None
@@ -346,8 +355,10 @@ def calcular_agendamentos_smart(caminho):
     total          = 0
     status_counter = Counter()
     raw_por_label  = defaultdict(set)
-    evolucao       = {}
-    tel_decisor    = set()
+    naosucesso_counter = Counter()
+    raw_por_label_ns   = defaultdict(set)
+    decisor_count  = 0
+    data_min = data_max = None
 
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i == 0:
@@ -356,54 +367,50 @@ def calcular_agendamentos_smart(caminho):
         if not dt:
             continue
         total += 1
+        if data_min is None or dt < data_min:
+            data_min = dt
+        if data_max is None or dt > data_max:
+            data_max = dt
 
         sn_raw = row[sn_idx] if len(row) > sn_idx else None
         st_raw = row[st_idx] if len(row) > st_idx else None
         raw    = str(sn_raw).strip() if sn_raw else (str(st_raw).strip() if st_raw else '')
-        label  = normalizar_status(raw) if raw else None
         rawn   = norm_txt(raw) if raw else ''
 
-        if label:
-            status_counter[label] += 1
-            if raw: raw_por_label[label].add(raw)
-
-        if rawn in TAB_AGEND_DECISOR:
-            tipo = str(row[tipo_idx]).strip().upper() if len(row) > tipo_idx and row[tipo_idx] else ''
-            if tipo == 'DISCADOR':
-                tel = norm_tel(row[orig_idx])
-            elif tipo == 'SAINTE':
-                tel = norm_tel(row[dest_idx])
-            else:
-                orig_norm = norm_tel(row[orig_idx])
-                tel = norm_tel(row[dest_idx]) if orig_norm == NOSSO_NUMERO else orig_norm
-            tel_decisor.add(tel)
-
-        dk = f"{dt.day:02d}/{MES_PT[dt.month]}"
-        if dk not in evolucao:
-            evolucao[dk] = {'date': dt.date(), 'qtd': 0, 'agendadas': 0}
-        evolucao[dk]['qtd'] += 1
-        if label == LABEL_AGENDADO:
-            evolucao[dk]['agendadas'] += 1
+        if rawn in AGEND_SUCESSO_MAP:
+            canon = AGEND_SUCESSO_MAP[rawn]
+            status_counter[canon] += 1
+            raw_por_label[canon].add(raw)
+            decisor_count += 1
+        elif raw:
+            ns_label = AGEND_SEM_OPERADOR_LABEL_CANON if rawn in AGEND_SEM_OPERADOR_NORM else raw
+            naosucesso_counter[ns_label] += 1
+            raw_por_label_ns[ns_label].add(raw)
+        else:
+            naosucesso_counter['Tentativas de Contato Sem Sucesso'] += 1
+            raw_por_label_ns['Tentativas de Contato Sem Sucesso'].add('(vazio)')
 
     wb.close()
 
-    dias_ord = sorted(evolucao.items(), key=lambda x: x[1]['date'])
     st_items = status_counter.most_common()
     st_tooltips = [', '.join(sorted(raw_por_label.get(s[0], set()))) for s in st_items]
+    ns_items = naosucesso_counter.most_common()
+    ns_tooltips = [', '.join(sorted(raw_por_label_ns.get(s[0], set()))) for s in ns_items]
 
     print(f'  Total Agendamentos: {total}')
-    print(f'  Contatos com Decisor: {len(tel_decisor)}')
+    print(f'  Contatos de Sucesso: {decisor_count}')
     print(f'  Status: {dict(st_items[:5])} ...')
 
     return {
         'agendTotal':          total,
-        'agendDecisor':        len(tel_decisor),
+        'agendDecisor':        decisor_count,
         'agendStatusLabels':   [s[0] for s in st_items],
         'agendStatusData':     [s[1] for s in st_items],
         'agendStatusTooltips': st_tooltips,
-        'agendEvolucaoLabels': [d[0] for d in dias_ord],
-        'agendTentDia':        [d[1]['qtd'] for d in dias_ord],
-        'agendConvDia':        [d[1]['agendadas'] for d in dias_ord],
+        'agendNaosucessoLabels':   [s[0] for s in ns_items],
+        'agendNaosucessoData':     [s[1] for s in ns_items],
+        'agendNaosucessoTooltips': ns_tooltips,
+        'agendDataMin': data_min, 'agendDataMax': data_max,
     }
 
 
@@ -539,6 +546,9 @@ def calcular_kpis_smart_agend():
     media   = (tent / empresas) if empresas > 0 else 0
     taxa    = (agendamentos_empresas / decisor * 100) if decisor > 0 else 0
 
+    dmin, dmax = agend.get('agendDataMin'), agend.get('agendDataMax')
+    periodo = f"{dmin.day:02d}/{MES_PT[dmin.month]} — {dmax.day:02d}/{MES_PT[dmax.month]}" if dmin and dmax else ''
+
     return {
         'empresas':      fmt_num(empresas),
         'tentativas':    fmt_num(tent),
@@ -547,12 +557,14 @@ def calcular_kpis_smart_agend():
         'agendamentos':       fmt_num(agendamentos_empresas),
         'agendamentosTotal':  fmt_num(agendamentos_total),
         'conversao':     fmt_pct(taxa),
+        'periodo':       periodo,
         'statusLabels':  agend['agendStatusLabels'],
         'statusData':    agend['agendStatusData'],
         'statusTooltips': agend['agendStatusTooltips'],
-        'evoLabels':     agend['agendEvolucaoLabels'],
-        'tentDia':       agend['agendTentDia'],
-        'convDia':       agend['agendConvDia'],
+        'naosucessoLabels':   agend['agendNaosucessoLabels'],
+        'naosucessoData':     agend['agendNaosucessoData'],
+        'naosucessoTooltips': agend['agendNaosucessoTooltips'],
+        'evoLabels': [], 'tentDia': [], 'convDia': [],
         'agendListaData':  lista['agendListaData'],
         'agendListaRazao': lista['agendListaRazao'],
         'agendListaSol':   lista['agendListaSol'],
@@ -601,19 +613,23 @@ def gerar_bloco_smart_agend(k):
     def js_str(lst): return '[' + ','.join(f"'{str(v).replace(chr(39), chr(92)+chr(39))}'" for v in lst) + ']'
     def js_num(lst): return '[' + ','.join(str(v) for v in lst) + ']'
 
-    periodo = f"{k['evoLabels'][0]} — {k['evoLabels'][-1]}" if k['evoLabels'] else ''
+    periodo = k.get('periodo', '')
     return f"""  /* SMART_AGEND_START */
   smart_agend: {{
     label: '— Smart Factory - Agendamentos', desc: 'Agendamentos da campanha Smart Factory — dados filtrados', periodo: '{periodo}',
     empresas: '{k['empresas']}', empresasLabel: '🏢 Empresas na Base',
     mediaLabel: '🔁 Média Tentativas/Empresa', mediaSub: 'por empresa',
     tentativas: '{k['tentativas']}', interessadosLabel: '📅 Agendamentos por Empresa', interessados: '{k['agendamentos']}', interessadosSub: 'Total de {k['agendamentosTotal']} agendamentos', conversao: '{k['conversao']}',
-    decisor: '{k['decisor']}', decisorSub: 'Apenas Smart Factory - Agendamentos', media: '{k['media']}', trend: '',
+    decisor: '{k['decisor']}', decisorLabel: '👤 Contatos de Sucesso', decisorSub: 'Apenas Smart Factory - Agendamentos', media: '{k['media']}', trend: '',
+    distTitle: 'Contatos de Sucesso',
     statusLabels: {js_str(k['statusLabels'])},
     statusData: {js_num(k['statusData'])}, statusColors:null,
     statusTooltips: {js_str(k.get('statusTooltips', ['']*len(k['statusLabels'])))},
-    evolucaoLabels: {js_str(k['evoLabels'])},
-    tentDia: {js_num(k['tentDia'])}, convDia: {js_num(k['convDia'])},
+    evoTitle: 'Tentativas de Contato Sem Sucesso', evoBar: true,
+    naosucessoLabels: {js_str(k.get('naosucessoLabels', []))},
+    naosucessoData: {js_num(k.get('naosucessoData', []))},
+    naosucessoTooltips: {js_str(k.get('naosucessoTooltips', []))},
+    evolucaoLabels: [], tentDia: [], convDia: [],
     showWpp: false,
     wppTitle: '', wppDesc: '',
     wppKpiLabels: [], wppListLabels: [], wppPieLabels: [],
