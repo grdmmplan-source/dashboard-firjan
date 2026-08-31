@@ -16,6 +16,7 @@ import openpyxl
 import os
 import re
 import glob
+import datetime
 
 PASTA      = r'Arquivos\atualizaveis'
 PREFIXO    = 'Base_Indicadores'
@@ -45,12 +46,20 @@ def data_int(dt):
     return dt.year * 10000 + dt.month * 100 + dt.day
 
 
-def fmt_valor(v):
-    """Formata Meta/Entregue para exibicao. Retorna (texto_exibicao, numero_bruto_ou_None)."""
+def fmt_valor(v, tipo=''):
+    """Formata Meta/Entregue para exibicao. Retorna (texto_exibicao, numero_bruto_ou_None).
+    TME e um tempo em segundos (nao percentual) mesmo quando <= 1, entao nao aplica
+    a heuristica de conversao para porcentagem nesse caso."""
     if v is None or (isinstance(v, str) and not v.strip()):
         return '—', None
+    if isinstance(v, datetime.timedelta):
+        return str(v), v.total_seconds()
+    if isinstance(v, datetime.time):
+        segundos = v.hour * 3600 + v.minute * 60 + v.second + v.microsecond / 1e6
+        return v.strftime('%H:%M:%S'), segundos
     if isinstance(v, (int, float)):
-        if 0 < v <= 1:
+        is_tempo = str(tipo).strip().upper() == 'TME'
+        if 0 < v <= 1 and not is_tempo:
             return f'{v * 100:.2f}'.replace('.', ',') + '%', v * 100
         if float(v).is_integer():
             return str(int(v)), float(v)
@@ -73,8 +82,8 @@ def calcular(caminho):
         fim = data_int(row[COL_FIM]) if len(row) > COL_FIM else None
         tipo = str(row[COL_TIPO]).strip() if row[COL_TIPO] is not None else ''
         nome = str(row[COL_NOME]).strip() if row[COL_NOME] is not None else ''
-        meta_disp, meta_num = fmt_valor(row[COL_META] if len(row) > COL_META else None)
-        entreg_disp, entreg_num = fmt_valor(row[COL_ENTREG] if len(row) > COL_ENTREG else None)
+        meta_disp, meta_num = fmt_valor(row[COL_META] if len(row) > COL_META else None, tipo)
+        entreg_disp, entreg_num = fmt_valor(row[COL_ENTREG] if len(row) > COL_ENTREG else None, tipo)
         bloco = str(row[COL_BLOCO]).strip()
         canal = str(row[COL_CANAL]).strip() if (len(row) > COL_CANAL and row[COL_CANAL]) else ''
         linhas.append({
