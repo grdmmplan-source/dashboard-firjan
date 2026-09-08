@@ -1,0 +1,1 @@
+- [Dashboard Firjan — Estado Atual](project_dashboard_firjan.md) — 6 campanhas padronizadas, indicadores dinâmicos, ocupação por canal, retry automático
