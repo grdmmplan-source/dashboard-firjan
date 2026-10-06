@@ -20,6 +20,7 @@ import atualizar_ocupacao        as aoc
 import atualizar_potencializee   as apz
 import atualizar_propag_ni       as apni
 import atualizar_propag_tres_rios as aptr
+import atualizar_imes            as aimes
 
 def main():
     print()
@@ -126,6 +127,12 @@ def main():
             aptr.main()
         except Exception as e:
             print(f'  [AVISO] Propag Três Rios nao atualizada: {e}')
+
+        print('\n[10g/11] IMES...')
+        try:
+            aimes.main()
+        except Exception as e:
+            print(f'  [AVISO] IMES nao atualizado: {e}')
 
         print('\n[10d/11] Ocupação...')
         try:
