@@ -18,6 +18,8 @@ import atualizar_qualidade       as aq
 import atualizar_indicadores     as aind
 import atualizar_ocupacao        as aoc
 import atualizar_potencializee   as apz
+import atualizar_propag_ni       as apni
+import atualizar_propag_tres_rios as aptr
 
 def main():
     print()
@@ -112,6 +114,18 @@ def main():
             aind.main()
         except Exception as e:
             print(f'  [AVISO] Base de Indicadores nao atualizada: {e}')
+
+        print('\n[10e/11] Propag Nova Iguaçu...')
+        try:
+            apni.main()
+        except Exception as e:
+            print(f'  [AVISO] Propag Nova Iguaçu nao atualizada: {e}')
+
+        print('\n[10f/11] Propag Três Rios...')
+        try:
+            aptr.main()
+        except Exception as e:
+            print(f'  [AVISO] Propag Três Rios nao atualizada: {e}')
 
         print('\n[10d/11] Ocupação...')
         try:
