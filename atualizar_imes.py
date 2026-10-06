@@ -19,9 +19,17 @@ INDEX_HTML   = r'index.html'
 DEPARA_PATH  = r'Arquivos\bases_apoio\tab_de-para.xlsx'
 
 COL_DATA = 0
+COL_STATUS = 10
+COL_STATUS_NEGOCIO = 11
 
 # Card "Interessados" = somente estes status de sucesso
 INTERESSADOS = ['Confirmado']
+
+# Nomes diferentes que devem contar como a mesma tabulacao
+ALIAS = {'FORA DE AREA/CAIXA DE MSGS': 'Fora de Área/Caixa de Mensagens'}
+
+# Excecoes ao de-para valem so para o IMES (o de-para geral nao e alterado)
+DEPARA_IMES = {'RETORNAR': 'Alo'}
 
 GRUPO_SUCESSO   = 'sucesso no contato'
 GRUPO_INSUCESSO = 'insucesso no contato'
@@ -68,6 +76,7 @@ def ler_resumo(caminho):
     total_geral = 0
 
     def acumula(dic, nome, qtd):
+        nome = ALIAS.get(norm_txt(nome), nome)
         k = norm_txt(nome)
         nomes.setdefault(k, str(nome).strip())
         dic[k] = dic.get(k, 0) + qtd
@@ -115,7 +124,6 @@ def calcular_imes(caminho_disc, caminho_base):
     sucesso, insucesso, motivos, total_emp = ler_resumo(caminho_base)
     print(f'  Empresas (Total Geral Controle + Lista de Espera): {total_emp}')
     print(f'  Sucesso: {sucesso}')
-    print(f'  Insucesso: {insucesso}')
     print(f'  Motivos: {motivos}')
 
     try:
@@ -125,19 +133,13 @@ def calcular_imes(caminho_disc, caminho_base):
         depara = {}
         print(f'  [AVISO] De-para nao carregado: {e}')
 
-    # Insucesso agrupado pelo de-para
-    ns, raw = {}, {}
-    for nome, qtd in insucesso.items():
-        lbl = depara.get(norm_txt(nome), nome)
-        ns[lbl] = ns.get(lbl, 0) + qtd
-        raw.setdefault(lbl, []).append(nome)
-    ns_ord = sorted(ns.items(), key=lambda kv: -kv[1])
-
     suc_ord = sorted(sucesso.items(), key=lambda kv: -kv[1])
     mot_ord = sorted(motivos.items(), key=lambda kv: -kv[1])
 
     # Tentativas e periodo (discagem)
     tentativas, datas = 0, []
+    suc_norm = {norm_txt(k) for k in sucesso}
+    ns, raw = {}, {}
     if caminho_disc:
         print(f'  Discagem: {os.path.basename(caminho_disc)}')
         wb = openpyxl.load_workbook(caminho_disc, read_only=True, data_only=True)
@@ -149,11 +151,22 @@ def calcular_imes(caminho_disc, caminho_base):
                 continue
             datas.append(dt)
             tentativas += 1
+            st = str(row[COL_STATUS]).strip() if row[COL_STATUS] else ''
+            neg = str(row[COL_STATUS_NEGOCIO]).strip() if len(row) > COL_STATUS_NEGOCIO and row[COL_STATUS_NEGOCIO] else ''
+            exib = (neg if neg else 'Atendido') if norm_txt(st) == 'ATENDIDO' else st
+            if not exib or norm_txt(ALIAS.get(norm_txt(exib), exib)) in suc_norm:
+                continue
+            lbl = DEPARA_IMES.get(norm_txt(exib)) or depara.get(norm_txt(exib), exib)
+            ns[lbl] = ns.get(lbl, 0) + 1
+            if exib not in raw.setdefault(lbl, []):
+                raw[lbl].append(exib)
         wb.close()
+    ns_ord = sorted(ns.items(), key=lambda kv: -kv[1])
     periodo = ''
     if datas:
         a, b = min(datas), max(datas)
         periodo = f"{a % 100:02d}/{(a // 100) % 100:02d}/{a // 10000} — {b % 100:02d}/{(b // 100) % 100:02d}/{b // 10000}"
+    print(f'  Sem sucesso (discagem): {ns}')
     print(f'  Tentativas: {tentativas} | Periodo: {periodo}')
 
     int_norm = {norm_txt(x) for x in INTERESSADOS}

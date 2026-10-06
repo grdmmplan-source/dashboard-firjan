@@ -1,23 +1,18 @@
 # -*- coding: utf-8 -*-
 """
 Atualizador Dashboard Firjan — TODAS AS CAMPANHAS
-Roda Retomada da Trilha + Smart Factory e atualiza o index.html completo.
+Atualiza o index.html: Propag Nova Iguacu, Propag Tres Rios, IMES, Saude, SAC, Receptivo, URA etc.
+As demais campanhas do Ativo estao congeladas (nao rodam aqui).
 """
 
 import os, sys
-import atualizar_retomada        as ar
-import atualizar_smart           as asm
-import atualizar_cursos_niteroi  as an
 import atualizar_saude           as asa
 import atualizar_sac             as asc
 import atualizar_receptivo       as arc
 import atualizar_ura             as aura
-import atualizar_colonia_inverno as aci
-import atualizar_iel             as ail
 import atualizar_qualidade       as aq
 import atualizar_indicadores     as aind
 import atualizar_ocupacao        as aoc
-import atualizar_potencializee   as apz
 import atualizar_propag_ni       as apni
 import atualizar_propag_tres_rios as aptr
 import atualizar_imes            as aimes
@@ -31,57 +26,9 @@ def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     try:
-        # 0. De-para compartilhado
-        print('\n[0/5] Carregando de-para...')
-        depara = ar.ler_depara(ar.DEPARA_PATH)
-        ar.STATUS_MAP.update(depara)
-        asm.STATUS_MAP.update(depara)
-        an.STATUS_MAP.update(depara)
-
-        # 1. Retomada da Trilha
-        print('\n[1/5] Calculando Retomada da Trilha...')
-        kr = ar.calcular_kpis(ar.PASTA_MAILING)
-        print(f'  Emp:{kr["empresas"]}  Tent:{kr["tentativas"]}  Int:{kr["interessados"]}  Dec:{kr["decisor"]}  Taxa:{kr["conversao"]}')
-
-        # 2. Smart Factory
-        print('\n[2/5] Calculando Smart Factory...')
-        ks = asm.calcular_kpis_smart()
-        print(f'  Emp:{ks["empresas"]}  Tent:{ks["tentativas"]}  Int:{ks["interessados"]}  Dec:{ks["decisor"]}  Taxa:{ks["conversao"]}')
-
-        # 3. Cursos Técnicos Niterói
-        print('\n[3/5] Calculando Cursos Técnicos Niterói...')
-        kn = an.calcular_kpis_niteroi()
-        print(f'  Insc:{kn["inscricoes"]}  Tent:{kn["tentativas"]}  Int:{kn["interessados"]}  Dec:{kn["decisor"]}  Taxa:{kn["conversao"]}')
-
-        # 4. Todas (soma)
-        print('\n[4/5] Calculando Todas as Campanhas (soma)...')
-        kt = ar.somar_campanhas([kr, ks, kn])
-        print(f'  Total:{kt["empresas"]}  Tent:{kt["tentativas"]}  Int:{kt["interessados"]}  Dec:{kt["decisor"]}  Taxa:{kt["conversao"]}')
-
-        # 5. Smart Factory - Agendamentos (SharePoint + Discagem local) — nao quebra se offline
-        print('\n[5/6] Calculando Smart Factory - Agendamentos...')
-        bloco_smart_agend = None
-        try:
-            ka = asm.calcular_kpis_smart_agend()
-            print(f'  Emp:{ka["empresas"]}  Tent:{ka["tentativas"]}  Dec:{ka["decisor"]}  Agend:{ka["agendamentos"]}')
-            bloco_smart_agend = asm.gerar_bloco_smart_agend(ka)
-        except Exception as e:
-            print(f'  [AVISO] Smart Factory - Agendamentos nao atualizado: {e}')
-
-        # 6. Gerar blocos JS
-        print('\n[6/6] Gerando blocos JavaScript...')
-        blocos = {
-            'TODAS':    ar.gerar_bloco_todas(kt),
-            'RETOMADA': ar.gerar_bloco_retomada(kr),
-            'SMART':    asm.gerar_bloco_smart(ks),
-            'NITEROI':  an.gerar_bloco_niteroi(kn),
-        }
-        if bloco_smart_agend:
-            blocos['SMART_AGEND'] = bloco_smart_agend
-
-        # 7. Atualizar HTML (campanhas Ativo)
-        print('\n[7/7] Atualizando index.html (Ativo)...')
-        ar.atualizar_html(ar.INDEX_HTML, blocos)
+        # Campanhas do Ativo congeladas (Retomada, Smart Factory, Smart Agendamentos, Niteroi,
+        # Colonia Inverno, IEL e PotencializEE): nao sao mais atualizadas aqui; o index.html
+        # mantem os ultimos dados. Para atualizar uma delas, rode o atualizar_*.py correspondente.
 
         # 8. Promocao Saude (Google Sheets) — nao quebra se estiver offline
         print('\n[8/11] Promocao Saude (Google Sheets)...')
@@ -146,27 +93,6 @@ def main():
             aura.main()
         except Exception as e:
             print(f'  [AVISO] URA nao atualizada: {e}')
-
-        # 12. Colônia Inverno 2026 (Google Sheets + Discagem local) — nao quebra se offline
-        print('\n[12/13] Colônia Inverno 2026...')
-        try:
-            aci.main()
-        except Exception as e:
-            print(f'  [AVISO] Colônia Inverno 2026 nao atualizada: {e}')
-
-        # 13. Prospecção IEL (Google Sheets + Discagem local) — nao quebra se offline
-        print('\n[13/14] Prospecção IEL...')
-        try:
-            ail.main()
-        except Exception as e:
-            print(f'  [AVISO] Prospecção IEL nao atualizada: {e}')
-
-        # 14. PotencializEE (Google Sheets + Discagem local) — nao quebra se offline
-        print('\n[14/14] PotencializEE...')
-        try:
-            apz.main()
-        except Exception as e:
-            print(f'  [AVISO] PotencializEE nao atualizada: {e}')
 
         # 10. Carimbo de data/hora da atualizacao
         ts = asc.carimbar_atualizacao(asc.INDEX_HTML)
