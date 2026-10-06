@@ -137,6 +137,7 @@ body.kiosk-on #single-view{position:fixed;top:4px;bottom:46px;left:0;right:0;ove
 body.wall-on .saude-filters,body.wall-on .subtab-carousel{display:none}
 body.wall-on #single-view{display:grid!important;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;height:calc(100vh - var(--tbh,57px));background:#1f2937}
 body.wall-on .page{display:none}
+body.wall-on .page.wq>.wq-hide{display:none!important}
 body.wall-on .page.wq{display:block;overflow:hidden;zoom:.5;background:#030712;padding:16px}
 .page{display:none;padding:24px}
 .page.active{display:block}
@@ -2448,7 +2449,16 @@ function toggleWall(){
     if(currentCamp!==WALL_CAMP) svSetCamp(WALL_CAMP);
     document.documentElement.style.setProperty('--tbh',document.getElementById('topbar').offsetHeight+'px');
     document.body.classList.add('wall-on');
-    WALL_PAGES.forEach(id=>document.getElementById('page-'+id).classList.add('wq'));
+    // Cada quadrante mostra so: titulo, cards e o primeiro par de graficos (como a tela de Saude)
+    WALL_PAGES.forEach(id=>{
+      const pg=document.getElementById('page-'+id); pg.classList.add('wq');
+      let achouPar=false;
+      [...pg.children].forEach(c=>{
+        if(c.classList.contains('sec-title')||c.classList.contains('kpi-grid'))return;
+        if(!achouPar&&c.classList.contains('chart-row')&&c.classList.contains('cr2')){achouPar=true;return;}
+        c.classList.add('wq-hide');
+      });
+    });
     btn.classList.add('active'); btn.textContent='✕ Fechar Videowall';
     setTimeout(()=>{ renderTudo(); window.dispatchEvent(new Event('resize')); },120);
     // rolagem lenta em cada quadrante (vai e volta) para mostrar a tela inteira
@@ -2467,7 +2477,7 @@ function toggleWall(){
   } else {
     clearInterval(wallTimer);
     document.body.classList.remove('wall-on');
-    WALL_PAGES.forEach(id=>{const el=document.getElementById('page-'+id); el.classList.remove('wq'); el.scrollTop=0;});
+    WALL_PAGES.forEach(id=>{const el=document.getElementById('page-'+id); el.classList.remove('wq'); el.scrollTop=0; [...el.children].forEach(c=>c.classList.remove('wq-hide'));});
     btn.classList.remove('active'); btn.textContent='⊞ Videowall 2×2';
     if(wallCampOrig&&wallCampOrig!==currentCamp) svSetCamp(wallCampOrig);
     setTimeout(renderTudo,120);
