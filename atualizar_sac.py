@@ -74,12 +74,13 @@ C2_PROD    = 5   # F  Produto/Servico
 C2_TIPO    = 8   # I  Tipo de Registro
 C2_FIM     = 11  # L  Data de Finalizacao
 C2_SAT     = 12  # M  Nivel de Satisfacao
-C2_ASSUNTO = 17  # R  Assunto
-C2_UNI     = 21  # V  Unidade
-C2_ENT     = 22  # W  Entidade
-C2_REG     = 23  # X  Regional
+C2_ASSUNTO = 18  # S  Assunto
+C2_UNI     = 23  # X  Unidade2
+C2_ENT     = 24  # Y  Entidade
+C2_REG     = 25  # Z  Regional
 C2_ENCAM   = 3   # D  Data de Encaminhamento (bloco "Impactos por Unidade")
-C2_ASSDET  = 18  # S  Detalhe do Assunto (bloco "Impactos por Unidade"; Fonte 2 nao tem Impacto)
+C2_ASSDET  = 19  # T  Detalhe do Assunto (bloco "Impactos por Unidade")
+C2_IMPACTO = 20  # U  Impacto
 
 # ═══════════════════════════════════════════════════════════
 # FUNÇÕES
@@ -363,7 +364,7 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
         ui  = get_idx(normalizar_unidade(cel(r, C2_UNI)), uni_list, uni_idx)
         aci = get_idx(cel(r, C2_ASSUNTO), assunto_list, assunto_idx)
         pi  = get_idx(cel(r, C2_PROD),    prod_list,    prod_idx)
-        ii  = get_idx(None, impacto_list, impacto_idx)  # Fonte 2 nao tem coluna Impacto
+        ii  = get_idx(cel(r, C2_IMPACTO), impacto_list, impacto_idx)
         sc  = sat_code(cel(r, C2_SAT))
         if sc == 1:
             sat += 1
@@ -398,7 +399,14 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
         data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui, ii])
         raw_rows2.append([fmt_raw(v) for v in r])
 
-        # Fonte 2 nao tem coluna Impacto -> nao entra no bloco "Impactos por Unidade"
+        imp_raw = cel(r, C2_IMPACTO)
+        if imp_raw is not None and str(imp_raw).strip():  # sem Impacto = fora do bloco
+            enc = to_dt(cel(r, C2_ENCAM))
+            dtEnc = (enc.year * 10000 + enc.month * 100 + enc.day) if enc else 0
+            iu = get_idx(normalizar_unidade(cel(r, C2_UNI)), imp_uni_list, imp_uni_idx)
+            ia = get_idx_nf(cel(r, C2_ASSDET), imp_assunto_list, imp_assunto_idx)
+            iv = get_idx(str(imp_raw).strip(), imp_nivel_list, imp_nivel_idx)
+            imp_rows.append([dtEnc, iu, ia, iv])
 
     print(f'  [Fonte 2] Total: {total} | Satisfeitos: {sat} | Insatisfeitos: {insat} | Outliers: {len(erros)}')
     return data_rows, erros, headers2, raw_rows2, imp_rows
