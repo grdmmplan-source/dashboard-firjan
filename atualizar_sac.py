@@ -86,6 +86,13 @@ C2_IMPACTO = 20  # U  Impacto
 # FUNÇÕES
 # ═══════════════════════════════════════════════════════════
 
+def norm_imp(v):
+    """Padroniza o nivel de Impacto ('leve' e 'Leve' viram o mesmo)."""
+    if v is None or not str(v).strip():
+        return v
+    return str(v).strip().capitalize()
+
+
 def baixar_xlsx(url):
     """Baixa o .xlsx do SharePoint usando cookie jar (link anonimo)."""
     print('  Baixando planilha SAC do SharePoint...')
@@ -241,7 +248,7 @@ def processar(xlsx_bytes):
         ui = get_idx(normalizar_unidade(cel(r, COL_UNI)), uni_list, uni_idx)   # Unidade (col H) -> ranking
         aci = get_idx(cel(r, COL_ASSUNTO), assunto_list, assunto_idx)
         pi = get_idx(cel(r, COL_PROD),    prod_list,    prod_idx)
-        ii = get_idx(cel(r, COL_IMPACTO), impacto_list, impacto_idx)
+        ii = get_idx(norm_imp(cel(r, COL_IMPACTO)), impacto_list, impacto_idx)
         sc = sat_code(cel(r, COL_SAT))
         if sc == 1:
             sat += 1
@@ -282,7 +289,7 @@ def processar(xlsx_bytes):
             dtEnc = (enc.year * 10000 + enc.month * 100 + enc.day) if enc else 0
             iu = get_idx(normalizar_unidade(cel(r, COL_UNI)), imp_uni_list, imp_uni_idx)
             ia = get_idx_nf(cel(r, COL_ASSDET), imp_assunto_list, imp_assunto_idx)
-            iv = get_idx(str(imp_raw).strip(), imp_nivel_list, imp_nivel_idx)
+            iv = get_idx(norm_imp(imp_raw), imp_nivel_list, imp_nivel_idx)
             imp_rows.append([dtEnc, iu, ia, iv])
 
     tmr = (soma_delta / n_delta) if n_delta else 0
@@ -364,7 +371,7 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
         ui  = get_idx(normalizar_unidade(cel(r, C2_UNI)), uni_list, uni_idx)
         aci = get_idx(cel(r, C2_ASSUNTO), assunto_list, assunto_idx)
         pi  = get_idx(cel(r, C2_PROD),    prod_list,    prod_idx)
-        ii  = get_idx(cel(r, C2_IMPACTO), impacto_list, impacto_idx)
+        ii  = get_idx(norm_imp(cel(r, C2_IMPACTO)), impacto_list, impacto_idx)
         sc  = sat_code(cel(r, C2_SAT))
         if sc == 1:
             sat += 1
@@ -405,7 +412,7 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
             dtEnc = (enc.year * 10000 + enc.month * 100 + enc.day) if enc else 0
             iu = get_idx(normalizar_unidade(cel(r, C2_UNI)), imp_uni_list, imp_uni_idx)
             ia = get_idx_nf(cel(r, C2_ASSDET), imp_assunto_list, imp_assunto_idx)
-            iv = get_idx(str(imp_raw).strip(), imp_nivel_list, imp_nivel_idx)
+            iv = get_idx(norm_imp(imp_raw), imp_nivel_list, imp_nivel_idx)
             imp_rows.append([dtEnc, iu, ia, iv])
 
     print(f'  [Fonte 2] Total: {total} | Satisfeitos: {sat} | Insatisfeitos: {insat} | Outliers: {len(erros)}')
