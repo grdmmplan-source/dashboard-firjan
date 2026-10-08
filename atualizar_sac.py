@@ -81,6 +81,7 @@ C2_REG     = 25  # Z  Regional
 C2_ENCAM   = 3   # D  Data de Encaminhamento (bloco "Impactos por Unidade")
 C2_ASSDET  = 19  # T  Detalhe do Assunto (bloco "Impactos por Unidade")
 C2_IMPACTO = 20  # U  Impacto
+C2_APOIO   = 14  # O  Apoio outras areas (so existe na Fonte 2)
 
 # ═══════════════════════════════════════════════════════════
 # FUNÇÕES
@@ -91,6 +92,19 @@ def norm_imp(v):
     if v is None or not str(v).strip():
         return v
     return str(v).strip().capitalize()
+
+
+def norm_apoio(v):
+    """'Apoio outras areas': 'Nao' conta como 'Nao se aplica'; so a primeira letra maiuscula."""
+    if v is None or not str(v).strip():
+        return v
+    t = str(v).strip()
+    if t.upper() in ('NÃO', 'NAO'):
+        t = 'Não se aplica'
+    # So a primeira letra maiuscula; siglas curtas (ex.: GEP) ficam como estao
+    if ' ' in t or len(t) > 4:
+        t = t[:1].upper() + t[1:].lower()
+    return t
 
 
 def baixar_xlsx(url):
@@ -203,6 +217,7 @@ def processar(xlsx_bytes):
     ent_list, assunto_list, prod_list, uni_list = [], [], [], []
     ent_idx, assunto_idx, prod_idx, uni_idx = {}, {}, {}, {}
     impacto_list, impacto_idx = [], {}
+    apoio_list, apoio_idx = [], {}  # Fonte 1 nao tem 'Apoio outras areas'
     imp_uni_list, imp_uni_idx = [], {}
     imp_assunto_list, imp_assunto_idx = [], {}
     imp_nivel_list, imp_nivel_idx = [], {}
@@ -280,7 +295,7 @@ def processar(xlsx_bytes):
                 n_delta += 1
                 dl = d
 
-        data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui, ii])
+        data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui, ii, get_idx(None, apoio_list, apoio_idx)])
         raw_rows1.append([fmt_raw(v) for v in r])
 
         imp_raw = cel(r, COL_IMPACTO)
@@ -307,7 +322,7 @@ def processar(xlsx_bytes):
           f'Detalhes de Assunto: {len(imp_assunto_list)} | Niveis: {imp_nivel_list}')
 
     extras = {
-        'ent': ent_list, 'assunto': assunto_list, 'prod': prod_list, 'uni': uni_list, 'impacto': impacto_list,
+        'ent': ent_list, 'assunto': assunto_list, 'prod': prod_list, 'uni': uni_list, 'impacto': impacto_list, 'apoio': apoio_list,
         'impUni': imp_uni_list, 'impUniIdx': imp_uni_idx,
         'impAssunto': imp_assunto_list, 'impAssuntoIdx': imp_assunto_idx,
         'impNivel': imp_nivel_list, 'impNivelIdx': imp_nivel_idx,
@@ -319,7 +334,7 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
                ent_list, ent_idx, assunto_list, assunto_idx, prod_list, prod_idx,
                uni_list, uni_idx, impacto_list, impacto_idx,
                imp_uni_list, imp_uni_idx, imp_assunto_list, imp_assunto_idx,
-               imp_nivel_list, imp_nivel_idx):
+               imp_nivel_list, imp_nivel_idx, apoio_list, apoio_idx):
     """Processa a fonte 2 (Google Sheets) reaproveitando as listas da fonte 1."""
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
@@ -403,7 +418,7 @@ def processar2(xlsx_bytes, canal_list, canal_idx, reg_list, reg_idx, tipo_list, 
                 n_delta += 1
                 dl = d
 
-        data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui, ii])
+        data_rows.append([dt, ci, ri, ti, sc, dl, ei, aci, pi, ui, ii, get_idx(norm_apoio(cel(r, C2_APOIO)), apoio_list, apoio_idx)])
         raw_rows2.append([fmt_raw(v) for v in r])
 
         imp_raw = cel(r, C2_IMPACTO)
@@ -449,6 +464,7 @@ def gerar_bloco(canal_list, reg_list, tipo_list, data_rows, outros_labels=None, 
         f'const SAC_PROD={js_str(extras.get("prod", []))};\n'
         f'const SAC_UNI={js_str(extras.get("uni", []))};\n'
         f'const SAC_IMPACTO={js_str(extras.get("impacto", []))};\n'
+        f'const SAC_APOIO={js_str(extras.get("apoio", []))};\n'
         f'const SAC_OUTROS={js_str(outros_labels or [])};\n'
         f'const SAC_ROWS={js_rows(data_rows)};\n'
         f'const SAC_HEADERS1={js_str(headers1 or [])};\n'
@@ -553,6 +569,7 @@ def main():
                 extras['impUni'],     extras['impUniIdx'],
                 extras['impAssunto'], extras['impAssuntoIdx'],
                 extras['impNivel'],   extras['impNivelIdx'],
+                extras['apoio'],      mk(extras['apoio']),
             )
             drows += drows2
             erros += erros2
