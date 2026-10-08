@@ -138,6 +138,7 @@ body.wall-on .saude-filters,body.wall-on .subtab-carousel{display:none}
 body.wall-on #single-view{display:grid!important;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;height:calc(100vh - var(--tbh,57px));background:#1f2937}
 body.wall-on .page{display:none}
 body.wall-on .page.wq>.wq-hide{display:none!important}
+body.kiosk-on .page>.wq-hide{display:none!important}
 body.wall-on .page.wq{display:block;overflow:hidden;zoom:.5;background:#030712;padding:16px}
 .page{display:none;padding:24px}
 .page.active{display:block}
@@ -2444,6 +2445,16 @@ const WALL_PAGES=['ativo','receptivo','saude','sac'];
 let wallCampOrig=null, wallTimer=null;
 function renderTudo(){ initStaticCharts(); applyFilter(); renderSaude(); renderSac(); renderRecep(); renderUra(); renderCamp(); }
 function navBtn(id){ return [...document.querySelectorAll('.btn-nav')].find(b=>(b.getAttribute('onclick')||'').includes("'"+id+"'")); }
+// Recorte usado no videowall e no Painel: titulo, cards e o primeiro par de graficos (como a tela de Saude)
+function recortarPagina(pg){
+  let achouPar=false;
+  [...pg.children].forEach(c=>{
+    if(c.classList.contains('sec-title')||c.classList.contains('kpi-grid'))return;
+    if(!achouPar&&c.classList.contains('chart-row')&&c.classList.contains('cr2')){achouPar=true;return;}
+    c.classList.add('wq-hide');
+  });
+}
+function restaurarPagina(pg){ [...pg.children].forEach(c=>c.classList.remove('wq-hide')); }
 function toggleWall(){
   wallOn=!wallOn;
   const btn=document.getElementById('btn-wall');
@@ -2452,16 +2463,7 @@ function toggleWall(){
     if(currentCamp!==WALL_CAMP) svSetCamp(WALL_CAMP);
     document.documentElement.style.setProperty('--tbh',document.getElementById('topbar').offsetHeight+'px');
     document.body.classList.add('wall-on');
-    // Cada quadrante mostra so: titulo, cards e o primeiro par de graficos (como a tela de Saude)
-    WALL_PAGES.forEach(id=>{
-      const pg=document.getElementById('page-'+id); pg.classList.add('wq');
-      let achouPar=false;
-      [...pg.children].forEach(c=>{
-        if(c.classList.contains('sec-title')||c.classList.contains('kpi-grid'))return;
-        if(!achouPar&&c.classList.contains('chart-row')&&c.classList.contains('cr2')){achouPar=true;return;}
-        c.classList.add('wq-hide');
-      });
-    });
+    WALL_PAGES.forEach(id=>{ const pg=document.getElementById('page-'+id); pg.classList.add('wq'); recortarPagina(pg); });
     btn.classList.add('active'); btn.textContent='✕ Fechar Videowall';
     setTimeout(()=>{ renderTudo(); window.dispatchEvent(new Event('resize')); },120);
     // rolagem lenta em cada quadrante (vai e volta) para mostrar a tela inteira
@@ -2480,7 +2482,7 @@ function toggleWall(){
   } else {
     clearInterval(wallTimer);
     document.body.classList.remove('wall-on');
-    WALL_PAGES.forEach(id=>{const el=document.getElementById('page-'+id); el.classList.remove('wq'); el.scrollTop=0; [...el.children].forEach(c=>c.classList.remove('wq-hide'));});
+    WALL_PAGES.forEach(id=>{const el=document.getElementById('page-'+id); el.classList.remove('wq'); el.scrollTop=0; restaurarPagina(el);});
     btn.classList.remove('active'); btn.textContent='⊞ Videowall 2×2';
     if(wallCampOrig&&wallCampOrig!==currentCamp) svSetCamp(wallCampOrig);
     setTimeout(renderTudo,120);
@@ -2497,28 +2499,23 @@ const KS=[
   {pg:'ura',n:'URA'},
   {pg:'campanha',n:'Campanha'}
 ];
-let kIdx=0,kProg=0,kTimer=null,kCampOrig=null,kPageOrig=null,kDur=8000,kMax=0; const TICK=50;
+let kIdx=0,kProg=0,kTimer=null,kCampOrig=null,kPageOrig=null; const TICK=50,KDUR=8000;
 function goKiosk(i){
   const sl=KS[i], sv=document.getElementById('single-view');
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>{p.classList.remove('active'); restaurarPagina(p);});
   document.querySelectorAll('.p-dot').forEach(d=>d.classList.remove('active'));
-  document.getElementById('page-'+sl.pg).classList.add('active');
+  const pg=document.getElementById('page-'+sl.pg); pg.classList.add('active'); recortarPagina(pg);
   activePage=sl.pg;
   if(sl.pg==='campanha') campSetSub('colonia');
   if(sl.c) svSetCamp(sl.c);
   document.getElementById('d'+i).classList.add('active');
   document.getElementById('k-label').textContent=sl.n;
-  kIdx=i; kProg=0; kMax=0; kDur=8000; sv.scrollTop=0; document.getElementById('k-bar').style.width='0%';
-  setTimeout(()=>{
-    renderTudo();
-    setTimeout(()=>{ if(kIdx!==i)return; kMax=Math.max(0,sv.scrollHeight-sv.clientHeight); kDur=Math.min(60000,Math.max(8000,8000*(sv.scrollHeight/sv.clientHeight))); },250);
-  },80);
+  kIdx=i; kProg=0; sv.scrollTop=0; document.getElementById('k-bar').style.width='0%';
+  setTimeout(renderTudo,80);
 }
 function kioskTick(){
-  const sv=document.getElementById('single-view');
-  kProg+=(TICK/kDur)*100;
+  kProg+=(TICK/KDUR)*100;
   document.getElementById('k-bar').style.width=Math.min(kProg,100)+'%';
-  if(kMax>0){ const p=Math.min(1,Math.max(0,(kProg-12)/76)); sv.scrollTop=kMax*p; }
   if(kProg>=100){ kIdx=(kIdx+1)%KS.length; goKiosk(kIdx); }
 }
 function openKiosk(){
@@ -2535,6 +2532,7 @@ function closeKiosk(){
   document.getElementById('kiosk').classList.remove('show');
   document.body.classList.remove('kiosk-on');
   document.getElementById('single-view').scrollTop=0;
+  document.querySelectorAll('.page').forEach(restaurarPagina);
   if(kCampOrig&&kCampOrig!==currentCamp) svSetCamp(kCampOrig);
   showPage(kPageOrig||'ativo', navBtn(kPageOrig||'ativo'));
 }
